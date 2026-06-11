@@ -1,0 +1,33 @@
+{
+  "name": "dollaz",
+  "version": "0.1.0",
+  "description": "Personal finance analysis — import bank CSVs, auto-categorise, dashboard trends and projections. Local-only desktop app.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ui:build": "bash ui/build.sh",
+    "ui:open": "xdg-open ui/Dollaz.html",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "version": "node scripts/sync-versions.mjs && git add src-tauri/Cargo.toml src-tauri/tauri.conf.json"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
+    "@tauri-apps/plugin-process": "^2",
+    "@tauri-apps/plugin-updater": "^2",
+    "@types/node": "^22.9.0",
+    "esbuild": "^0.28.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  },
+  "allowScripts": {
+    "esbuild@0.28.0": true,
+    "esbuild@0.21.5": true
+  }
+}

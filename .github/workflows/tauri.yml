@@ -1,0 +1,197 @@
+name: build-tauri
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - 'ui/**'
+      - 'src-tauri/**'
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/tauri.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+# Opt Node-based actions into Node 24 now; required from June 2026.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Linux system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - run: npm ci
+
+      - name: Read release notes
+        id: notes
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          if [ -f RELEASE_NOTES.md ]; then
+            {
+              echo 'body<<EOF'
+              cat RELEASE_NOTES.md
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo 'body<<EOF'
+              echo 'See the assets below to download and install this version.'
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: tauri-apps/tauri-action@v0
+        id: tauri
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Dollaz {0}', github.ref_name) || '' }}
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: true
+          prerelease: false
+
+      - name: Delete prior artifacts (keep only latest)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const name = `dollaz-linux`;
+            const { data } = await github.rest.actions.listArtifactsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name,
+              per_page: 100,
+            });
+            for (const a of data.artifacts) {
+              core.info(`Deleting prior artifact ${a.name} (id ${a.id})`);
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: a.id,
+              });
+            }
+
+      - name: Upload artifacts (non-release runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dollaz-linux
+          path: |
+            src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: ignore
+
+  # After the build finishes, build latest.json and attach it to the draft
+  # release so the in-app updater can discover new versions.
+  publish-manifest:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate latest.json and attach to release
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ github.ref_name }}
+        with:
+          script: |
+            const tag = process.env.TAG;
+            const version = tag.replace(/^v/, '');
+            // getReleaseByTag doesn't find drafts; list and match by tag instead.
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+            const release = releases.find(r => r.tag_name === tag);
+            if (!release) {
+              throw new Error(`No release (draft or published) found for tag ${tag}`);
+            }
+
+            const assets = release.assets;
+            const pick = (pred) => assets.find(a => pred(a.name));
+            // .sig assets live on a draft release; fetch via API (octet-stream)
+            // since browser_download_url 404s until the release is published.
+            const readSig = async (sigAsset) => {
+              if (!sigAsset) return null;
+              const res = await github.request('GET /repos/{owner}/{repo}/releases/assets/{asset_id}', {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                asset_id: sigAsset.id,
+                headers: { accept: 'application/octet-stream' },
+              });
+              return Buffer.from(res.data).toString('utf8').trim();
+            };
+            const stableUrl = (name) =>
+              `https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/${tag}/${name}`;
+
+            const linuxAppImage = pick(n => /\.AppImage$/.test(n) && !/\.sig$/.test(n));
+            const linuxAppImageSig = pick(n => n === (linuxAppImage && linuxAppImage.name + '.sig'));
+
+            const platforms = {};
+            if (linuxAppImage) {
+              platforms['linux-x86_64'] = {
+                signature: await readSig(linuxAppImageSig) || '',
+                url: stableUrl(linuxAppImage.name),
+              };
+            }
+
+            const manifest = {
+              version,
+              notes: release.body || '',
+              pub_date: release.published_at || new Date().toISOString(),
+              platforms,
+            };
+
+            const fs = require('fs');
+            fs.writeFileSync('latest.json', JSON.stringify(manifest, null, 2));
+            core.info(JSON.stringify(manifest, null, 2));
+
+            const existing = assets.find(a => a.name === 'latest.json');
+            if (existing) {
+              await github.rest.repos.deleteReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                asset_id: existing.id,
+              });
+            }
+            await github.rest.repos.uploadReleaseAsset({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.id,
+              name: 'latest.json',
+              data: fs.readFileSync('latest.json'),
+            });

@@ -1,0 +1,52 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Dollaz",
+  "version": "0.1.0",
+  "identifier": "dev.alexpoor.dollaz",
+  "build": {
+    "frontendDist": "../ui",
+    "beforeBuildCommand": "npm run ui:build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Dollaz · Personal Finance",
+        "url": "Dollaz.html",
+        "width": 1440,
+        "height": 960,
+        "minWidth": 1100,
+        "minHeight": 720,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "appimage"
+    ],
+    "category": "Finance",
+    "shortDescription": "Personal finance analysis",
+    "longDescription": "Import bank CSV exports, auto-categorise transactions with retained mappings, and explore dashboards, category trends and projections. Local-only.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/alex-poor/dollaz/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZCQTQwQzZGMEIyMTRENjUKUldSbFRTRUxid3lrKy9tWHM5QU41d3EvN0dMTCttUlBqSy9PQXdwM0FHWWNlSGJ4ZkFVa2hIZ0QK"
+    }
+  }
+}
