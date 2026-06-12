@@ -1,4 +1,18 @@
-# Dollaz 0.1.0
+# Dollaz 0.2.0
+
+- **OFX / QFX and QIF import**, alongside CSV. The format is detected
+  automatically; OFX and QIF carry named fields so they skip the column-mapping
+  step entirely.
+- OFX transactions are deduplicated by the bank's own transaction id (FITID),
+  making re-imports of overlapping ranges exact.
+- QIF imports offer a date-format control for ambiguous dates.
+
+Categorisation is unchanged and still applies to every format — new merchants
+are surfaced once and the mapping is retained.
+
+---
+
+## 0.1.0
 
 First release.
 

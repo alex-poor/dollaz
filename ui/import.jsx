@@ -1,4 +1,6 @@
-// import.jsx — Import CSV: drop → map columns → categorise unmapped → commit.
+// import.jsx — Import CSV/OFX/QIF: drop → map/review → categorise → commit.
+// CSV needs a column-mapping step; OFX and QIF carry named fields so that step
+// is replaced by a read-only review (QIF gets a date-format control).
 const { ICONS, Button, Money, CatDot, PromptModal } = window;
 
 function newId(prefix) { return prefix + '-' + Math.random().toString(36).slice(2, 9); }
@@ -6,9 +8,12 @@ function newId(prefix) { return prefix + '-' + Math.random().toString(36).slice(
 function ImportScreen({ state, setState, pushHistory, pushToast }) {
   const DZ = window.DZ;
   const [stage, setStage] = React.useState('drop');     // drop | map | categorize | done
+  const [format, setFormat] = React.useState('csv');    // csv | ofx | qif
   const [fileName, setFileName] = React.useState('');
-  const [prepared, setPrepared] = React.useState(null);
-  const [mapping, setMapping] = React.useState(null);
+  const [rawText, setRawText] = React.useState('');      // for ofx/qif re-parse
+  const [qifDateFormat, setQifDateFormat] = React.useState('auto');
+  const [prepared, setPrepared] = React.useState(null);  // csv only
+  const [mapping, setMapping] = React.useState(null);    // csv only
   const [importId] = React.useState(() => newId('imp'));
   const [dragHover, setDragHover] = React.useState(false);
   const [rememberName, setRememberName] = React.useState('');
@@ -26,16 +31,27 @@ function ImportScreen({ state, setState, pushHistory, pushToast }) {
   const fileInput = React.useRef(null);
 
   const handleText = (text, name) => {
-    const prep = DZ.prepareCsv(text);
-    if (!prep.headers.length) { pushToast({ msg: 'Could not read any rows from that file' }); return; }
-    const known = state.importFormats.find(f => f.signature === prep.signature);
-    setPrepared(prep);
+    const fmt = DZ.detectFormat(name, text);
+    setFormat(fmt);
     setFileName(name);
-    setMatchedFormat(known || null);
-    setMapping(known ? { ...known.mapping } : DZ.guessMapping(prep.headers));
-    setRememberName(known ? known.name : '');
+    setRawText(text);
+    setMatchedFormat(null);
+    setRememberName('');
+    if (fmt === 'csv') {
+      const prep = DZ.prepareCsv(text);
+      if (!prep.headers.length) { pushToast({ msg: 'Could not read any rows from that file' }); return; }
+      const known = state.importFormats.find(f => f.signature === prep.signature);
+      setPrepared(prep);
+      setMatchedFormat(known || null);
+      setMapping(known ? { ...known.mapping } : DZ.guessMapping(prep.headers));
+      setRememberName(known ? known.name : '');
+      if (known) pushToast({ msg: `Recognised layout “${known.name}” — mapping applied` });
+    } else {
+      setPrepared(null);
+      setMapping(null);
+      pushToast({ msg: `${fmt.toUpperCase()} detected — fields read automatically` });
+    }
     setStage('map');
-    if (known) pushToast({ msg: `Recognised layout “${known.name}” — mapping applied` });
   };
 
   const onFile = (file) => {
@@ -46,17 +62,25 @@ function ImportScreen({ state, setState, pushHistory, pushToast }) {
   };
   const onDrop = (e) => { e.preventDefault(); setDragHover(false); onFile(e.dataTransfer.files?.[0]); };
 
-  const mappingValid = mapping && mapping.date && mapping.description && (mapping.amount || mapping.debit || mapping.credit);
+  // Build all transactions for the current file/format (full set).
+  const buildAll = React.useCallback(() => {
+    if (format === 'ofx') return DZ.parseOfx(rawText, importId);
+    if (format === 'qif') return DZ.parseQif(rawText, importId, qifDateFormat);
+    return DZ.buildTransactions(prepared, mapping, importId);
+  }, [format, rawText, qifDateFormat, prepared, mapping, importId]);
 
-  // Preview the first few rows under the current mapping.
+  const mappingValid = format !== 'csv' || (mapping && mapping.date && mapping.description && (mapping.amount || mapping.debit || mapping.credit));
+
+  // Preview the first few transactions under the current settings.
   const preview = React.useMemo(() => {
-    if (!prepared || !mapping) return { transactions: [], skipped: 0 };
-    const sample = { ...prepared, rows: prepared.rows.slice(0, 6) };
-    return DZ.buildTransactions(sample, mapping, importId);
-  }, [prepared, mapping, importId]);
+    const built = format === 'csv'
+      ? (prepared && mapping ? DZ.buildTransactions({ ...prepared, rows: prepared.rows.slice(0, 6) }, mapping, importId) : { transactions: [], skipped: 0 })
+      : buildAll();
+    return { transactions: built.transactions.slice(0, 6), skipped: built.skipped };
+  }, [format, prepared, mapping, importId, buildAll]);
 
   const proceedToCategorize = () => {
-    const built = DZ.buildTransactions(prepared, mapping, importId);
+    const built = buildAll();
     const ded = DZ.dedupe(state.transactions, built.transactions);
     const categorised = DZ.applyRules(ded.fresh, state.rules);
     const grps = DZ.groupUnmapped(categorised);
@@ -100,7 +124,7 @@ function ImportScreen({ state, setState, pushHistory, pushToast }) {
     setStage('done');
   };
 
-  const reset = () => { setStage('drop'); setPrepared(null); setMapping(null); setFresh([]); setGroups([]); setAssign({}); setFileName(''); };
+  const reset = () => { setStage('drop'); setFormat('csv'); setRawText(''); setQifDateFormat('auto'); setPrepared(null); setMapping(null); setFresh([]); setGroups([]); setAssign({}); setFileName(''); };
 
   const mappedCount = groups.filter(g => assign[g.pattern]).length;
 
@@ -108,10 +132,10 @@ function ImportScreen({ state, setState, pushHistory, pushToast }) {
     <div className="content narrow">
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Import transactions</h1>
       <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 20 }}>
-        Drop a bank CSV. Columns are mapped (and remembered per layout), duplicates are skipped, and unmapped merchants are surfaced for one-time categorisation.
+        Drop a bank export — <b>CSV, OFX/QFX or QIF</b>. OFX/QIF fields are read automatically; CSV columns are mapped (and remembered per layout). Duplicates are skipped, and unmapped merchants are surfaced for one-time categorisation.
       </div>
 
-      <Stepper stage={stage}/>
+      <Stepper stage={stage} format={format}/>
 
       {stage === 'drop' && (
         <div className="card" style={{ marginTop: 18 }}>
@@ -123,10 +147,10 @@ function ImportScreen({ state, setState, pushHistory, pushToast }) {
               onClick={() => fileInput.current?.click()}>
               <div style={{ color: 'var(--accent)', marginBottom: 10, display: 'flex', justifyContent: 'center' }}><ICONS.Upload size={32}/></div>
               <div style={{ fontWeight: 600, color: 'var(--text-strong)', marginBottom: 4 }}>
-                Drop a CSV here <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>or click to choose</span>
+                Drop a file here <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>or click to choose</span>
               </div>
-              <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>Any bank export with a date, description and amount (or debit/credit) column.</div>
-              <input ref={fileInput} type="file" accept=".csv,text/csv,text/plain" style={{ display: 'none' }}
+              <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>CSV, OFX/QFX or QIF — whichever your bank exports.</div>
+              <input ref={fileInput} type="file" accept=".csv,.ofx,.qfx,.qif,text/csv,text/plain,application/x-ofx" style={{ display: 'none' }}
                 onChange={e => onFile(e.target.files?.[0])}/>
             </div>
             {state.importFormats.length > 0 && (
@@ -138,7 +162,7 @@ function ImportScreen({ state, setState, pushHistory, pushToast }) {
         </div>
       )}
 
-      {stage === 'map' && mapping && (
+      {stage === 'map' && format === 'csv' && mapping && (
         <div className="card" style={{ marginTop: 18 }}>
           <div className="card-head">
             <h3>Map columns</h3>
@@ -193,6 +217,50 @@ function ImportScreen({ state, setState, pushHistory, pushToast }) {
               <div style={{ flex: 1 }}/>
               <Button variant="ghost" onClick={reset}>Back</Button>
               <Button variant="primary" disabled={!mappingValid} onClick={proceedToCategorize}>Continue →</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {stage === 'map' && format !== 'csv' && (
+        <div className="card" style={{ marginTop: 18 }}>
+          <div className="card-head">
+            <h3>Review</h3>
+            <span className="sub">{fileName} · {format.toUpperCase()} · {preview.transactions.length ? '' : 'no'} transactions read</span>
+          </div>
+          <div className="card-body">
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+              {format === 'ofx'
+                ? 'Fields (date, amount, payee, transaction id) were read directly from the OFX file — no column mapping needed. You’ll categorise merchants on the next step.'
+                : 'Fields were read from the QIF file. QIF dates can be ambiguous — set the date format if the preview looks wrong.'}
+            </div>
+            {format === 'qif' && (
+              <div className="field" style={{ maxWidth: 240, marginBottom: 14 }}>
+                <label>Date format</label>
+                <select className="input" value={qifDateFormat} onChange={e => setQifDateFormat(e.target.value)}>
+                  <option value="auto">Auto-detect</option>
+                  <option value="DMY">Day / Month / Year</option>
+                  <option value="MDY">Month / Day / Year</option>
+                  <option value="YMD">Year / Month / Day</option>
+                </select>
+              </div>
+            )}
+            <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 8 }}>Preview</div>
+            {preview.transactions.length === 0 ? (
+              <div className="hint error">No transactions parsed{format === 'qif' ? ' — try a different date format.' : '.'}</div>
+            ) : (
+              <table className="table" style={{ fontSize: 12.5 }}>
+                <thead><tr><th>Date</th><th>Description</th><th className="num">Amount</th></tr></thead>
+                <tbody>
+                  {preview.transactions.map(t => (
+                    <tr key={t.id}><td className="num">{t.date}</td><td>{t.description}</td><td className="num"><Money value={t.amount} colorSign/></td></tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16, justifyContent: 'flex-end' }}>
+              <Button variant="ghost" onClick={reset}>Back</Button>
+              <Button variant="primary" disabled={!preview.transactions.length} onClick={proceedToCategorize}>Continue →</Button>
             </div>
           </div>
         </div>
@@ -301,8 +369,8 @@ function SummaryNum({ n, label }) {
   );
 }
 
-function Stepper({ stage }) {
-  const steps = [{ k: 'drop', label: 'Upload' }, { k: 'map', label: 'Map columns' }, { k: 'categorize', label: 'Categorise' }, { k: 'done', label: 'Done' }];
+function Stepper({ stage, format = 'csv' }) {
+  const steps = [{ k: 'drop', label: 'Upload' }, { k: 'map', label: format === 'csv' ? 'Map columns' : 'Review' }, { k: 'categorize', label: 'Categorise' }, { k: 'done', label: 'Done' }];
   const curr = steps.findIndex(s => s.k === stage);
   return (
     <div className="stepper">

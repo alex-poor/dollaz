@@ -30,6 +30,7 @@ export interface Transaction {
   account: string;       // account label (may be '')
   categoryId: string | null;
   importId: string;      // which import batch introduced it
+  fitid?: string;        // bank's unique transaction id (OFX only); used for dedupe
 }
 
 /** How incoming CSV columns map onto the canonical fields.
