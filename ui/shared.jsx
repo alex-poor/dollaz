@@ -107,79 +107,119 @@ function StackedBar({ items, height = 10, showLabels = false }) {
 
 // ---- SVG charts ---------------------------------------------------------
 
-// Grouped income/expense/net bar chart by month.
-// data: [{ label, income, expense, net }]
-function BarsChart({ data, height = 220 }) {
-  const pad = { l: 8, r: 8, t: 12, b: 26 };
-  const W = 100; // viewBox width units; rendered responsive
-  const max = Math.max(1, ...data.map(d => Math.max(d.income, d.expense)));
+// Charts render in real pixel coordinates (viewBox == measured width × height,
+// no preserveAspectRatio stretching) so text stays crisp and strokes uniform.
+
+function useMeasuredWidth(fallback = 760) {
+  const ref = React.useRef(null);
+  const [w, setW] = React.useState(fallback);
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const update = () => setW(Math.max(200, Math.round(el.clientWidth)));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w];
+}
+
+// Round a max up to a "nice" axis bound (1/2/5 × 10^n) for readable gridlines.
+function niceCeil(v) {
+  if (v <= 0) return 1;
+  const exp = Math.floor(Math.log10(v));
+  const base = Math.pow(10, exp);
+  const f = v / base;
+  const nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
+  return nf * base;
+}
+function axisTicks(max, n = 4) {
+  return Array.from({ length: n + 1 }, (_, i) => (max * i) / n);
+}
+const CHART_PAD = { l: 58, r: 16, t: 14, b: 30 };
+
+function YAxis({ max, W, y }) {
+  return axisTicks(max).map((t, i) => (
+    <g key={i}>
+      <line x1={CHART_PAD.l} x2={W - CHART_PAD.r} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeWidth="1"/>
+      <text x={CHART_PAD.l - 8} y={y(t) + 4} fontSize="11" textAnchor="end" fill="var(--text-dim)">
+        {window.fmtCurrency(t, { compact: true, decimals: 0 })}
+      </text>
+    </g>
+  ));
+}
+
+// Grouped income/expense bar chart by month. data: [{ label, income, expense }]
+function BarsChart({ data, height = 240 }) {
+  const [ref, W] = useMeasuredWidth();
+  const p = CHART_PAD;
+  const max = niceCeil(Math.max(1, ...data.map(d => Math.max(d.income, d.expense))));
   const n = data.length || 1;
-  const slot = (W - pad.l - pad.r) / n;
-  const barW = Math.min(14, slot * 0.34);
-  const innerH = height - pad.t - pad.b;
-  const y = v => pad.t + innerH * (1 - v / max);
+  const innerW = W - p.l - p.r;
+  const innerH = height - p.t - p.b;
+  const slot = innerW / n;
+  const barW = Math.min(18, Math.max(3, slot * 0.32));
+  const y = v => p.t + innerH * (1 - v / max);
+  const y0 = y(0);
+  const step = Math.ceil(n / 12);
   return (
-    <svg viewBox={`0 0 ${W} ${height}`} preserveAspectRatio="none" style={{ width: '100%', height, display: 'block' }}>
-      {[0.25, 0.5, 0.75, 1].map((f, i) => (
-        <line key={i} x1={pad.l} x2={W - pad.r} y1={y(max * f)} y2={y(max * f)} stroke="var(--border)" strokeWidth="0.3"/>
-      ))}
-      {data.map((d, i) => {
-        const cx = pad.l + slot * i + slot / 2;
-        return (
-          <g key={i}>
-            <rect x={cx - barW - 1} y={y(d.income)} width={barW} height={Math.max(0, pad.t + innerH - y(d.income))} fill="var(--pos)" rx="1">
-              <title>{`${d.label} · income ${window.fmtCurrency(d.income)}`}</title>
-            </rect>
-            <rect x={cx + 1} y={y(d.expense)} width={barW} height={Math.max(0, pad.t + innerH - y(d.expense))} fill="var(--neg)" rx="1">
-              <title>{`${d.label} · expense ${window.fmtCurrency(d.expense)}`}</title>
-            </rect>
-            {n <= 18 && <text x={cx} y={height - 8} fontSize="3.4" textAnchor="middle" fill="var(--text-dim)">{d.label}</text>}
-          </g>
-        );
-      })}
-    </svg>
+    <div ref={ref} style={{ width: '100%' }}>
+      <svg width="100%" height={height} viewBox={`0 0 ${W} ${height}`} style={{ display: 'block' }}>
+        <YAxis max={max} W={W} y={y}/>
+        {data.map((d, i) => {
+          const cx = p.l + slot * i + slot / 2;
+          return (
+            <g key={i}>
+              <rect x={cx - barW - 1.5} y={y(d.income)} width={barW} height={Math.max(0, y0 - y(d.income))} fill="var(--pos)" rx="2"><title>{`${d.label} · income ${window.fmtCurrency(d.income)}`}</title></rect>
+              <rect x={cx + 1.5} y={y(d.expense)} width={barW} height={Math.max(0, y0 - y(d.expense))} fill="var(--neg)" rx="2"><title>{`${d.label} · expense ${window.fmtCurrency(d.expense)}`}</title></rect>
+              {i % step === 0 && <text x={cx} y={height - 10} fontSize="11" textAnchor="middle" fill="var(--text-dim)">{d.label}</text>}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 
 // Multi-series line chart. series: [{ name, color, values:number[] }]; labels: string[]
-// `forecastFrom` (index) onward is drawn dashed.
-function LineChart({ series, labels, height = 240, forecastFrom = null }) {
-  const pad = { l: 8, r: 6, t: 10, b: 24 };
-  const W = 100;
-  const allVals = series.flatMap(s => s.values);
-  const max = Math.max(1, ...allVals);
+// `forecastFrom` (index) onward is drawn dashed over a shaded region.
+function LineChart({ series, labels, height = 260, forecastFrom = null }) {
+  const [ref, W] = useMeasuredWidth();
+  const p = CHART_PAD;
+  const max = niceCeil(Math.max(1, ...series.flatMap(s => s.values)));
   const len = labels.length || 1;
-  const innerW = W - pad.l - pad.r;
-  const innerH = height - pad.t - pad.b;
-  const x = i => pad.l + (len <= 1 ? innerW / 2 : innerW * i / (len - 1));
-  const y = v => pad.t + innerH * (1 - v / max);
-  const labelStep = Math.ceil(len / 8);
+  const innerW = W - p.l - p.r;
+  const innerH = height - p.t - p.b;
+  const x = i => p.l + (len <= 1 ? innerW / 2 : (innerW * i) / (len - 1));
+  const y = v => p.t + innerH * (1 - v / max);
+  const step = Math.max(1, Math.ceil(len / 12));
   return (
-    <svg viewBox={`0 0 ${W} ${height}`} preserveAspectRatio="none" style={{ width: '100%', height, display: 'block' }}>
-      {[0, 0.5, 1].map((f, i) => (
-        <line key={i} x1={pad.l} x2={W - pad.r} y1={y(max * f)} y2={y(max * f)} stroke="var(--border)" strokeWidth="0.3"/>
-      ))}
-      {forecastFrom != null && forecastFrom < len && (
-        <rect x={x(forecastFrom)} y={pad.t} width={W - pad.r - x(forecastFrom)} height={innerH} fill="var(--surface-2)" opacity="0.6"/>
-      )}
-      {series.map((s, si) => {
-        const solid = []; const dashed = [];
-        s.values.forEach((v, i) => {
-          const pt = `${x(i).toFixed(2)},${y(v).toFixed(2)}`;
-          if (forecastFrom == null || i <= forecastFrom) solid.push(pt);
-          if (forecastFrom != null && i >= forecastFrom) dashed.push(pt);
-        });
-        return (
-          <g key={si}>
-            <polyline points={solid.join(' ')} fill="none" stroke={s.color} strokeWidth="0.8" strokeLinejoin="round" strokeLinecap="round"/>
-            {dashed.length > 1 && <polyline points={dashed.join(' ')} fill="none" stroke={s.color} strokeWidth="0.8" strokeDasharray="1.5 1.5" opacity="0.85"/>}
-          </g>
-        );
-      })}
-      {labels.map((l, i) => (i % labelStep === 0 || i === len - 1) && (
-        <text key={i} x={x(i)} y={height - 7} fontSize="3.2" textAnchor="middle" fill="var(--text-dim)">{window.fmtMonthShort(l)}</text>
-      ))}
-    </svg>
+    <div ref={ref} style={{ width: '100%' }}>
+      <svg width="100%" height={height} viewBox={`0 0 ${W} ${height}`} style={{ display: 'block' }}>
+        <YAxis max={max} W={W} y={y}/>
+        {forecastFrom != null && forecastFrom < len && (
+          <rect x={x(forecastFrom)} y={p.t} width={W - p.r - x(forecastFrom)} height={innerH} fill="var(--surface-2)" opacity="0.7"/>
+        )}
+        {series.map((s, si) => {
+          const solid = [], dashed = [];
+          s.values.forEach((v, i) => {
+            const pt = `${x(i).toFixed(1)},${y(v).toFixed(1)}`;
+            if (forecastFrom == null || i <= forecastFrom) solid.push(pt);
+            if (forecastFrom != null && i >= forecastFrom) dashed.push(pt);
+          });
+          return (
+            <g key={si}>
+              <polyline points={solid.join(' ')} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+              {dashed.length > 1 && <polyline points={dashed.join(' ')} fill="none" stroke={s.color} strokeWidth="2" strokeDasharray="5 4" opacity="0.9"/>}
+            </g>
+          );
+        })}
+        {labels.map((l, i) => (i % step === 0 || i === len - 1) && (
+          <text key={i} x={x(i)} y={height - 10} fontSize="11" textAnchor="middle" fill="var(--text-dim)">{window.fmtMonthShort(l)}</text>
+        ))}
+      </svg>
+    </div>
   );
 }
 
