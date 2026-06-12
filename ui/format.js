@@ -1,54 +1,50 @@
-// format.js — money / number / date formatting helpers exposed on window.
-// Currency symbol is read from the live settings (set by state.jsx) so the
-// whole UI re-formats when the user changes it.
-
+// format.js — window.fmtCurrency / fmtNumber / fmtMonth / fmtDate
 (function () {
-  function currencySymbol() {
-    try { return (window.__dz_currency || '$'); } catch { return '$'; }
-  }
+  let SYMBOL = "$"; // NZD
 
-  function fmtCurrency(value, opts = {}) {
-    const { compact = false, decimals = 2, sign = false } = opts;
-    if (value == null || isNaN(value)) return currencySymbol() + '0';
-    const neg = value < 0;
-    let abs = Math.abs(value);
+  function setCurrencySymbol(s) { SYMBOL = s; }
+
+  function fmtCurrency(n, opts = {}) {
+    const { compact = false, sign = false, cents = "auto" } = opts;
+    const neg = n < 0;
+    let abs = Math.abs(n);
     let body;
     if (compact && abs >= 1000) {
-      if (abs >= 1e6) body = (abs / 1e6).toFixed(abs >= 1e7 ? 0 : 1) + 'M';
-      else body = (abs / 1e3).toFixed(abs >= 1e4 ? 0 : 1) + 'k';
+      if (abs >= 1e6) body = (abs / 1e6).toFixed(abs >= 1e7 ? 0 : 1) + "M";
+      else body = (abs / 1000).toFixed(abs >= 1e5 ? 0 : 1) + "k";
     } else {
-      body = abs.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      const showCents = cents === true || (cents === "auto" && abs < 100000);
+      body = abs.toLocaleString("en-NZ", {
+        minimumFractionDigits: showCents ? 2 : 0,
+        maximumFractionDigits: showCents ? 2 : 0,
+      });
     }
-    const s = currencySymbol() + body;
-    if (neg) return '-' + s;
-    return sign ? '+' + s : s;
+    const s = SYMBOL + body;
+    if (sign) return (neg ? "−" : "+") + s;
+    return (neg ? "−" : "") + s;
   }
 
-  function fmtNumber(value, decimals = 0) {
-    if (value == null || isNaN(value)) return '0';
-    return Number(value).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-  }
+  function fmtNumber(n) { return Number(n).toLocaleString("en-NZ"); }
 
-  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-  // 'yyyy-mm' -> 'Mon yyyy'
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   function fmtMonth(ym) {
-    if (!ym) return '';
-    const [y, m] = ym.split('-').map(Number);
-    return `${MONTH_NAMES[(m || 1) - 1]} ${y}`;
+    // ym like '2026-06' or Date
+    if (typeof ym === "string") {
+      const [y, m] = ym.split("-").map(Number);
+      return MONTHS[m - 1] + " " + String(y).slice(2);
+    }
+    const d = new Date(ym);
+    return MONTHS[d.getMonth()] + " " + String(d.getFullYear()).slice(2);
   }
-  // 'yyyy-mm' -> "Mon 'yy" (compact axis label)
-  function fmtMonthShort(ym) {
-    if (!ym) return '';
-    const [y, m] = ym.split('-').map(Number);
-    return `${MONTH_NAMES[(m || 1) - 1]} '${String(y).slice(2)}`;
+  function fmtMonthLong(ym) {
+    const [y, m] = ym.split("-").map(Number);
+    const long = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    return long[m - 1] + " " + y;
   }
-  // 'yyyy-mm-dd' -> 'd Mon yyyy'
-  function fmtDate(iso) {
-    if (!iso) return '';
-    const [y, m, d] = iso.split('-').map(Number);
-    return `${d} ${MONTH_NAMES[(m || 1) - 1]} ${y}`;
+  function fmtDate(d) {
+    const dt = typeof d === "string" ? new Date(d + "T00:00:00") : d;
+    return dt.getDate() + " " + MONTHS[dt.getMonth()];
   }
 
-  Object.assign(window, { fmtCurrency, fmtNumber, fmtMonth, fmtMonthShort, fmtDate, MONTH_NAMES });
+  Object.assign(window, { fmtCurrency, fmtNumber, fmtMonth, fmtMonthLong, fmtDate, setCurrencySymbol });
 })();

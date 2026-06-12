@@ -1,24 +1,24 @@
-# Dollaz 0.2.0
+# Dollaz 0.3.0 — "The Illuminated Ledger"
 
-- **OFX / QFX and QIF import**, alongside CSV. The format is detected
-  automatically; OFX and QIF carry named fields so they skip the column-mapping
-  step entirely.
-- OFX transactions are deduplicated by the bank's own transaction id (FITID),
-  making re-imports of overlapping ranges exact.
-- QIF imports offer a date-format control for ambiguous dates.
+A complete visual redesign and a new accounts feature.
 
-Categorisation is unchanged and still applies to every format — new merchants
-are surfaced once and the mapping is retained.
+- **New look:** a gilded gothic-grimoire theme — antique-gold gilt frames,
+  Pre-Raphaelite jewel category colours, Playfair/Garamond/JetBrains Mono type,
+  engraved hand-rolled charts, and an arcane copy voice. Dark only.
+- **Vaults (accounts):** track everyday coffers, reserves, debt-bonds and
+  retirement; balances roll up into a net-worth "Sum of Thy Hoard".
+- **Augury (wellbeing):** a 0–100 standing score from your savings rate,
+  emergency buffer and how much spend is still uncategorised.
+- **Sanctum (dashboard), Auguries (analysis), The Ledger, Sigils, The Summoning**
+  — every screen reworked; categorisation, projections and import are unchanged
+  underneath.
 
 ---
 
+## 0.2.0
+
+- OFX / QFX and QIF import alongside CSV (format auto-detected; OFX dedupes by FITID).
+
 ## 0.1.0
 
-First release.
-
-- Import bank CSVs with a column-mapping step that remembers each layout.
-- Rule-based auto-categorisation; unmapped merchants surfaced for one-time mapping.
-- Duplicate detection on re-import.
-- Dashboard: income / expense / net, monthly trend, top categories.
-- Analysis: category spend over time and simple projections (average / trend).
-- Local-only; signed self-updates from GitHub Releases.
+- First release: CSV import, rule-based categorisation, dashboard, analysis, signed self-update.

@@ -5,6 +5,26 @@
 
 export type CategoryKind = 'expense' | 'income' | 'transfer';
 
+export type AccountKind = 'spending' | 'saving' | 'credit' | 'retire';
+
+/** A user-maintained account ("vault"). Balances are entered manually; net
+ *  worth is the sum across all accounts (credit balances are negative). */
+export interface Account {
+  id: string;
+  name: string;
+  inst: string;            // institution
+  kind: AccountKind;
+  balance: number;         // current balance; credit cards are negative
+  color: string;           // jewel hex
+  icon: string;            // ICONS name: card | piggy | growth | bank | coins
+  num?: string;            // masked number, e.g. "•• 4021"
+  goal?: number | null;    // saving target
+  rate?: number | null;    // saving interest % p.a.
+  limit?: number | null;   // credit limit
+  contrib?: number | null; // retire contribution %
+  returns12?: number | null; // retire 12-mo return %
+}
+
 export interface Category {
   id: string;
   name: string;

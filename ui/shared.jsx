@@ -1,249 +1,399 @@
-// shared.jsx — shared UI primitives + tiny dependency-free SVG charts.
-const { ICONS } = window;
+// shared.jsx — primitives + hand-rolled inline-SVG charts (pixel-accurate).
+// Reads { Icon } from window; registers all components on window.
+(function () {
+  const { useState, useRef, useLayoutEffect, useEffect, useMemo } = React;
+  const { Icon } = window;
 
-function Button({ children, variant = 'default', size, icon, onClick, disabled, title, type = 'button', className = '', ...rest }) {
-  const cls = ['btn'];
-  if (variant !== 'default') cls.push(variant);
-  if (size) cls.push(size);
-  if (className) cls.push(className);
-  return (
-    <button type={type} className={cls.join(' ')} onClick={onClick} disabled={disabled} title={title} {...rest}>
-      {icon}{children}
-    </button>
-  );
-}
+  /* ===================== helpers ===================== */
+  function useMeasuredWidth() {
+    const ref = useRef(null);
+    const [w, setW] = useState(0);
+    useLayoutEffect(() => {
+      if (!ref.current) return;
+      const ro = new ResizeObserver((entries) => {
+        const cw = entries[0].contentRect.width;
+        setW(cw);
+      });
+      ro.observe(ref.current);
+      setW(ref.current.clientWidth);
+      return () => ro.disconnect();
+    }, []);
+    return [ref, w];
+  }
 
-function Modal({ open, title, onClose, children, footer, width = 480 }) {
-  if (!open) return null;
-  return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal fade-in" style={{ maxWidth: width }} onClick={e => e.stopPropagation()}>
-        {title && <div className="modal-head"><h3>{title}</h3></div>}
-        <div className="modal-body">{children}</div>
-        {footer && <div className="modal-foot">{footer}</div>}
-      </div>
-    </div>
-  );
-}
+  function niceCeil(v) {
+    if (v <= 0) return 10;
+    const pow = Math.pow(10, Math.floor(Math.log10(v)));
+    const n = v / pow;
+    let mult;
+    if (n <= 1) mult = 1; else if (n <= 2) mult = 2; else if (n <= 2.5) mult = 2.5;
+    else if (n <= 5) mult = 5; else mult = 10;
+    return mult * pow;
+  }
 
-function PromptModal({ open, title, label, initialValue = '', placeholder, confirmLabel = 'Save', onSubmit, onClose }) {
-  const [value, setValue] = React.useState(initialValue);
-  React.useEffect(() => { if (open) setValue(initialValue); }, [open, initialValue]);
-  const inputRef = React.useRef(null);
-  React.useEffect(() => { if (open && inputRef.current) inputRef.current.focus(); }, [open]);
-  if (!open) return null;
-  const submit = () => { const v = value.trim(); if (!v) return; onSubmit(v); };
-  return (
-    <Modal open={open} title={title} onClose={onClose}
-      footer={<>
-        <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={submit} disabled={!value.trim()}>{confirmLabel}</Button>
-      </>}>
-      {label && <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 6 }}>{label}</label>}
-      <input ref={inputRef} className="input" value={value} placeholder={placeholder || ''}
-        onChange={e => setValue(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } else if (e.key === 'Escape') { e.preventDefault(); onClose(); } }}/>
-    </Modal>
-  );
-}
+  const CHART_PAD = { l: 56, r: 18, t: 16, b: 30 };
 
-function ConfirmModal({ open, title = 'Are you sure?', body, confirmLabel = 'Confirm', danger = true, onConfirm, onClose }) {
-  if (!open) return null;
-  return (
-    <Modal open={open} title={title} onClose={onClose}
-      footer={<>
-        <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant={danger ? 'danger' : 'primary'} onClick={() => { onConfirm(); onClose(); }}>{confirmLabel}</Button>
-      </>}>
-      <div style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.5 }}>{body}</div>
-    </Modal>
-  );
-}
+  /* ===================== Money ===================== */
+  function Money({ value, colorSign, compact, sign, className = "", style, ...rest }) {
+    const txt = window.fmtCurrency(value, { compact, sign: sign || colorSign });
+    let color;
+    if (colorSign) color = value > 0 ? "var(--pos)" : value < 0 ? "var(--neg)" : "var(--text-muted)";
+    return <span className={"num " + className} style={{ color, ...style }} {...rest}>{txt}</span>;
+  }
 
-function Money({ value, className = '', compact = false, decimals = 2, colorSign = false }) {
-  let cls = 'num ' + className;
-  if (colorSign) cls += value < 0 ? ' neg' : ' pos';
-  return <span className={cls}>{window.fmtCurrency(value, { compact, decimals })}</span>;
-}
+  /* ===================== Button ===================== */
+  function Button({ variant, size, icon, iconName, children, className = "", ...rest }) {
+    const cls = ["btn", variant, size, icon ? "icon" : "", className].filter(Boolean).join(" ");
+    return (
+      <button className={cls} {...rest}>
+        {iconName && <Icon name={iconName} />}
+        {children}
+      </button>
+    );
+  }
 
-function CatDot({ color }) { return <span className="cat-dot" style={{ background: color }}/>; }
+  /* ===================== CatDot / pills ===================== */
+  function CatDot({ color, lg }) {
+    return <span className={"cat-dot" + (lg ? " lg" : "")} style={{ background: color }} />;
+  }
+  function CategoryPill({ cat, unmapped }) {
+    if (unmapped || !cat || cat.id == null) {
+      return <span className="cat-pill unmapped"><Icon name="alert" size={13} />Uncategorised</span>;
+    }
+    return <span className="cat-pill"><CatDot color={cat.color} />{cat.name}</span>;
+  }
+  function Delta({ value, invert, suffix = "%" }) {
+    // value is a number; invert means "down is good"
+    const up = value > 0, down = value < 0;
+    const good = invert ? down : up;
+    const cls = value === 0 ? "flat" : good ? "up" : "down";
+    return (
+      <span className={"delta " + cls}>
+        {value !== 0 && <Icon name={up ? "trendUp" : "trendDown"} size={13} />}
+        {(value > 0 ? "+" : "") + value}{suffix}
+      </span>
+    );
+  }
+  function Chip({ tone, iconName, children }) {
+    return <span className={"chip " + (tone || "")}>{iconName && <Icon name={iconName} size={13} />}{children}</span>;
+  }
 
-function CategoryPill({ category }) {
-  if (!category) return <span className="chip"><CatDot color="#9aa0a6"/> Uncategorised</span>;
-  return <span className="chip" style={{ background: 'var(--surface-2)' }}><CatDot color={category.color}/> {category.name}</span>;
-}
-
-function Sparkline({ value, max, color = 'var(--accent)' }) {
-  const pct = max > 0 ? Math.min(100, value / max * 100) : 0;
-  return (
-    <div style={{ height: 4, background: 'var(--surface-2)', borderRadius: 100, overflow: 'hidden' }}>
-      <div style={{ width: pct + '%', height: '100%', background: color, transition: 'width 0.18s ease-out' }}/>
-    </div>
-  );
-}
-
-function StackedBar({ items, height = 10, showLabels = false }) {
-  const total = items.reduce((s, i) => s + i.value, 0);
-  return (
-    <div>
-      <div style={{ display: 'flex', width: '100%', height, borderRadius: height / 2, overflow: 'hidden', background: 'var(--surface-2)' }}>
-        {items.map((it, i) => {
-          const w = total > 0 ? (it.value / total * 100) : 0;
-          return <div key={i} style={{ width: w + '%', background: it.color, transition: 'width 0.18s ease-out' }} title={`${it.label}: ${window.fmtCurrency(it.value)}`}/>;
-        })}
-      </div>
-      {showLabels && (
-        <div style={{ display: 'flex', gap: 14, marginTop: 10, flexWrap: 'wrap' }}>
-          {items.map((it, i) => (
-            <span key={i} style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <CatDot color={it.color}/> {it.label} <span className="num" style={{ color: 'var(--text-strong)', fontWeight: 600 }}>{window.fmtCurrency(it.value, { compact: true })}</span>
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---- SVG charts ---------------------------------------------------------
-
-// Charts render in real pixel coordinates (viewBox == measured width × height,
-// no preserveAspectRatio stretching) so text stays crisp and strokes uniform.
-
-function useMeasuredWidth(fallback = 760) {
-  const ref = React.useRef(null);
-  const [w, setW] = React.useState(fallback);
-  React.useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const update = () => setW(Math.max(200, Math.round(el.clientWidth)));
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, w];
-}
-
-// Round a max up to a "nice" axis bound (1/2/5 × 10^n) for readable gridlines.
-function niceCeil(v) {
-  if (v <= 0) return 1;
-  const exp = Math.floor(Math.log10(v));
-  const base = Math.pow(10, exp);
-  const f = v / base;
-  const nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
-  return nf * base;
-}
-function axisTicks(max, n = 4) {
-  return Array.from({ length: n + 1 }, (_, i) => (max * i) / n);
-}
-const CHART_PAD = { l: 58, r: 16, t: 14, b: 30 };
-
-function YAxis({ max, W, y }) {
-  return axisTicks(max).map((t, i) => (
-    <g key={i}>
-      <line x1={CHART_PAD.l} x2={W - CHART_PAD.r} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeWidth="1"/>
-      <text x={CHART_PAD.l - 8} y={y(t) + 4} fontSize="11" textAnchor="end" fill="var(--text-dim)">
-        {window.fmtCurrency(t, { compact: true, decimals: 0 })}
-      </text>
-    </g>
-  ));
-}
-
-// Grouped income/expense bar chart by month. data: [{ label, income, expense }]
-function BarsChart({ data, height = 240 }) {
-  const [ref, W] = useMeasuredWidth();
-  const p = CHART_PAD;
-  const max = niceCeil(Math.max(1, ...data.map(d => Math.max(d.income, d.expense))));
-  const n = data.length || 1;
-  const innerW = W - p.l - p.r;
-  const innerH = height - p.t - p.b;
-  const slot = innerW / n;
-  const barW = Math.min(18, Math.max(3, slot * 0.32));
-  const y = v => p.t + innerH * (1 - v / max);
-  const y0 = y(0);
-  const step = Math.ceil(n / 12);
-  return (
-    <div ref={ref} style={{ width: '100%' }}>
-      <svg width="100%" height={height} viewBox={`0 0 ${W} ${height}`} style={{ display: 'block' }}>
-        <YAxis max={max} W={W} y={y}/>
-        {data.map((d, i) => {
-          const cx = p.l + slot * i + slot / 2;
-          return (
-            <g key={i}>
-              <rect x={cx - barW - 1.5} y={y(d.income)} width={barW} height={Math.max(0, y0 - y(d.income))} fill="var(--pos)" rx="2"><title>{`${d.label} · income ${window.fmtCurrency(d.income)}`}</title></rect>
-              <rect x={cx + 1.5} y={y(d.expense)} width={barW} height={Math.max(0, y0 - y(d.expense))} fill="var(--neg)" rx="2"><title>{`${d.label} · expense ${window.fmtCurrency(d.expense)}`}</title></rect>
-              {i % step === 0 && <text x={cx} y={height - 10} fontSize="11" textAnchor="middle" fill="var(--text-dim)">{d.label}</text>}
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
-// Multi-series line chart. series: [{ name, color, values:number[] }]; labels: string[]
-// `forecastFrom` (index) onward is drawn dashed over a shaded region.
-function LineChart({ series, labels, height = 260, forecastFrom = null }) {
-  const [ref, W] = useMeasuredWidth();
-  const p = CHART_PAD;
-  const max = niceCeil(Math.max(1, ...series.flatMap(s => s.values)));
-  const len = labels.length || 1;
-  const innerW = W - p.l - p.r;
-  const innerH = height - p.t - p.b;
-  const x = i => p.l + (len <= 1 ? innerW / 2 : (innerW * i) / (len - 1));
-  const y = v => p.t + innerH * (1 - v / max);
-  const step = Math.max(1, Math.ceil(len / 12));
-  return (
-    <div ref={ref} style={{ width: '100%' }}>
-      <svg width="100%" height={height} viewBox={`0 0 ${W} ${height}`} style={{ display: 'block' }}>
-        <YAxis max={max} W={W} y={y}/>
-        {forecastFrom != null && forecastFrom < len && (
-          <rect x={x(forecastFrom)} y={p.t} width={W - p.r - x(forecastFrom)} height={innerH} fill="var(--surface-2)" opacity="0.7"/>
+  /* ===================== Sparkline ===================== */
+  function Sparkline({ values, color = "var(--accent)", height = 34, fill = true, strokeWidth = 2 }) {
+    const [ref, w] = useMeasuredWidth();
+    const min = Math.min(...values), max = Math.max(...values);
+    const span = max - min || 1;
+    const W = w || 120, H = height, pad = 3;
+    const pts = values.map((v, i) => {
+      const x = pad + (i / (values.length - 1)) * (W - pad * 2);
+      const y = pad + (1 - (v - min) / span) * (H - pad * 2);
+      return [x, y];
+    });
+    const line = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+    const area = line + ` L${pts[pts.length-1][0].toFixed(1)} ${H} L${pts[0][0].toFixed(1)} ${H} Z`;
+    const gid = "spk" + useMemo(() => Math.random().toString(36).slice(2, 7), []);
+    return (
+      <div ref={ref} style={{ width: "100%", height: H }}>
+        {w > 0 && (
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+            <defs>
+              <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity="0.22" />
+                <stop offset="100%" stopColor={color} stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {fill && <path d={area} fill={`url(#${gid})`} />}
+            <path d={line} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx={pts[pts.length-1][0]} cy={pts[pts.length-1][1]} r="2.6" fill={color} />
+          </svg>
         )}
-        {series.map((s, si) => {
-          const solid = [], dashed = [];
-          s.values.forEach((v, i) => {
-            const pt = `${x(i).toFixed(1)},${y(v).toFixed(1)}`;
-            if (forecastFrom == null || i <= forecastFrom) solid.push(pt);
-            if (forecastFrom != null && i >= forecastFrom) dashed.push(pt);
-          });
-          return (
-            <g key={si}>
-              <polyline points={solid.join(' ')} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
-              {dashed.length > 1 && <polyline points={dashed.join(' ')} fill="none" stroke={s.color} strokeWidth="2" strokeDasharray="5 4" opacity="0.9"/>}
-            </g>
-          );
-        })}
-        {labels.map((l, i) => (i % step === 0 || i === len - 1) && (
-          <text key={i} x={x(i)} y={height - 10} fontSize="11" textAnchor="middle" fill="var(--text-dim)">{window.fmtMonthShort(l)}</text>
+      </div>
+    );
+  }
+
+  /* ===================== StackedBar ===================== */
+  function StackedBar({ segments, height = 14 }) {
+    // segments: [{value, color, label}]
+    const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+    return (
+      <div className="meter" style={{ height }}>
+        {segments.map((s, i) => (
+          <span key={i} title={s.label} style={{ width: (s.value / total) * 100 + "%", background: s.color }} />
         ))}
-      </svg>
-    </div>
-  );
-}
+      </div>
+    );
+  }
 
-function ChartLegend({ items }) {
-  return (
-    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 10 }}>
-      {items.map((it, i) => (
-        <span key={i} style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <CatDot color={it.color}/> {it.label}
+  /* ===================== ChartLegend ===================== */
+  function ChartLegend({ items }) {
+    return (
+      <div className="row" style={{ flexWrap: "wrap", gap: "8px 18px" }}>
+        {items.map((it, i) => (
+          <span key={i} className="row" style={{ gap: 7, fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 500 }}>
+            <CatDot color={it.color} />{it.name}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  /* ===================== Tooltip box ===================== */
+  function Tip({ x, W, top, children }) {
+    const flip = x > W * 0.6;
+    return (
+      <div style={{
+        position: "absolute", left: x, top, transform: `translate(${flip ? "-100%" : "0"}, -50%)`,
+        marginLeft: flip ? -10 : 10, pointerEvents: "none", zIndex: 5,
+        background: "var(--surface)", border: "1px solid var(--gold-dim)",
+        borderRadius: "var(--r)", boxShadow: "var(--shadow-lg)", padding: "10px 12px",
+        minWidth: 138, fontSize: "0.86rem", fontFamily: "var(--font-body)",
+      }}>{children}</div>
+    );
+  }
+
+  /* ===================== BarsChart (engraved plate) ===================== */
+  function BarsChart({ data, height = 240, showNet = true }) {
+    const [ref, w] = useMeasuredWidth();
+    const [hi, setHi] = useState(null);
+    const uid = useMemo(() => "bc" + Math.random().toString(36).slice(2, 7), []);
+    const W = w || 600, H = height;
+    const maxV = niceCeil(Math.max(...data.flatMap((d) => [d.income, d.expenses])));
+    const innerW = W - CHART_PAD.l - CHART_PAD.r;
+    const innerH = H - CHART_PAD.t - CHART_PAD.b;
+    const x0 = CHART_PAD.l, y0 = CHART_PAD.t, baseY = y0 + innerH;
+    const yScale = (v) => y0 + innerH * (1 - v / maxV);
+    const n = data.length, groupW = innerW / n;
+    const barW = Math.min(10, groupW * 0.24);
+    const step = Math.ceil(n / 12);
+    const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => maxV * f);
+    const netLine = data.map((d, i) => [x0 + groupW * (i + 0.5), yScale(Math.max(0, d.net))]);
+    function onMove(e) { const r = e.currentTarget.getBoundingClientRect(); const px = (e.clientX - r.left) * (W / r.width); setHi(Math.max(0, Math.min(n - 1, Math.floor((px - x0) / groupW)))); }
+    const hd = hi != null ? data[hi] : null;
+    const hx = hi != null ? x0 + groupW * (hi + 0.5) : 0;
+    const diamond = (x, y, c, r = 2.8) => <rect x={x - r} y={y - r} width={r * 2} height={r * 2} transform={`rotate(45 ${x} ${y})`} fill={c} stroke="var(--surface)" strokeWidth="1" />;
+    return (
+      <div ref={ref} style={{ position: "relative", width: "100%", height: H }}>
+        {w > 0 && (
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} onMouseMove={onMove} onMouseLeave={() => setHi(null)}>
+            <defs>
+              <pattern id={uid + "i"} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="var(--pos)" strokeWidth="1.3" /></pattern>
+              <pattern id={uid + "e"} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="var(--neg)" strokeWidth="1.3" /></pattern>
+            </defs>
+            {ticks.map((t, i) => (
+              <g key={i}>
+                <line x1={x0} x2={x0 + innerW} y1={yScale(t)} y2={yScale(t)} stroke="var(--gold-dim)" strokeWidth="1" strokeDasharray="1 5" opacity="0.55" />
+                <text x={x0 - 12} y={yScale(t) + 4} textAnchor="end" fontSize="10.5" fill="var(--text-dim)" fontFamily="JetBrains Mono, monospace">{window.fmtCurrency(t, { compact: true })}</text>
+              </g>
+            ))}
+            {hi != null && <rect x={x0 + groupW * hi} y={y0} width={groupW} height={innerH} fill="color-mix(in srgb, var(--gold) 7%, transparent)" />}
+            <line x1={x0} x2={x0 + innerW} y1={baseY} y2={baseY} stroke="var(--gold)" strokeWidth="1.4" />
+            {data.map((d, i) => {
+              const cx = x0 + groupW * (i + 0.5), dim = hi != null && hi !== i ? 0.4 : 1;
+              const ix = cx - barW - 1.5, ex = cx + 1.5, iY = yScale(d.income), eY = yScale(d.expenses);
+              return (
+                <g key={i} opacity={dim}>
+                  <rect x={ix} y={iY} width={barW} height={baseY - iY} fill="var(--pos)" opacity="0.16" />
+                  <rect x={ix} y={iY} width={barW} height={baseY - iY} fill={`url(#${uid}i)`} />
+                  <rect x={ix} y={iY} width={barW} height={baseY - iY} fill="none" stroke="var(--pos)" strokeWidth="0.9" />
+                  <rect x={ex} y={eY} width={barW} height={baseY - eY} fill="var(--neg)" opacity="0.16" />
+                  <rect x={ex} y={eY} width={barW} height={baseY - eY} fill={`url(#${uid}e)`} />
+                  <rect x={ex} y={eY} width={barW} height={baseY - eY} fill="none" stroke="var(--neg)" strokeWidth="0.9" />
+                  {(i % step === 0) && <text x={cx} y={H - 9} textAnchor="middle" fontSize="11" fill="var(--text-dim)" fontFamily="EB Garamond, serif" fontStyle="italic">{window.fmtMonth(d.ym)}</text>}
+                </g>
+              );
+            })}
+            {showNet && <path d={netLine.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ")} fill="none" stroke="var(--gold)" strokeWidth="1.8" strokeLinejoin="round" />}
+            {showNet && netLine.map((p, i) => <g key={i} opacity={hi != null && hi !== i ? 0.4 : 1}>{diamond(p[0], p[1], "var(--gold)", hi === i ? 4 : 2.8)}</g>)}
+            {hi != null && <line x1={hx} x2={hx} y1={y0} y2={baseY} stroke="var(--gold)" strokeWidth="0.8" strokeDasharray="2 3" opacity="0.7" />}
+          </svg>
+        )}
+        {hd && (
+          <Tip x={hx} W={W} top={CHART_PAD.t + 30}>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--text-strong)", marginBottom: 5 }}>{window.fmtMonth(hd.ym)}</div>
+            <Row c="var(--pos)" k="Income" v={hd.income} />
+            <Row c="var(--neg)" k="Expenses" v={hd.expenses} />
+            <div style={{ borderTop: "1px solid var(--gold-dim)", marginTop: 5, paddingTop: 5 }}>
+              <Row c="var(--gold)" k="Surplus" v={hd.net} sign />
+            </div>
+          </Tip>
+        )}
+      </div>
+    );
+  }
+  function Row({ c, k, v, sign }) {
+    return (
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: "1px 0" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-muted)", fontFamily: "var(--font-body)" }}>
+          <span style={{ width: 8, height: 8, transform: "rotate(45deg)", background: c }} />{k}
         </span>
-      ))}
-    </div>
-  );
-}
+        <Money value={v} className="" style={{ fontWeight: 600, color: "var(--text-strong)" }} sign={sign} />
+      </div>
+    );
+  }
 
-function EmptyState({ icon, title, body, action }) {
-  return (
-    <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--text-muted)' }}>
-      <div style={{ color: 'var(--text-dim)', display: 'flex', justifyContent: 'center', marginBottom: 14 }}>{icon}</div>
-      <h2 style={{ fontSize: 18, marginBottom: 8 }}>{title}</h2>
-      <div style={{ fontSize: 14, maxWidth: 460, margin: '0 auto 18px', lineHeight: 1.55 }}>{body}</div>
-      {action}
-    </div>
-  );
-}
+  /* ===================== LineChart (engraved) ===================== */
+  function LineChart({ series, months, height = 260, forecastFrom = null, area = false }) {
+    const [ref, w] = useMeasuredWidth();
+    const [hi, setHi] = useState(null);
+    const W = w || 600, H = height;
+    const all = series.flatMap((s) => s.values);
+    const maxV = niceCeil(Math.max(...all, 1));
+    const innerW = W - CHART_PAD.l - CHART_PAD.r;
+    const innerH = H - CHART_PAD.t - CHART_PAD.b;
+    const x0 = CHART_PAD.l, y0 = CHART_PAD.t, baseY = y0 + innerH;
+    const n = months.length;
+    const xAt = (i) => x0 + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+    const yAt = (v) => y0 + innerH * (1 - v / maxV);
+    const step = Math.ceil(n / 12);
+    const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => maxV * f);
+    const uid = useMemo(() => "lc" + Math.random().toString(36).slice(2, 7), []);
+    const splitAt = forecastFrom != null ? forecastFrom : n - 1;
+    function onMove(e) { const r = e.currentTarget.getBoundingClientRect(); const px = (e.clientX - r.left) * (W / r.width); setHi(Math.max(0, Math.min(n - 1, Math.round((px - x0) / (innerW / (n - 1)))))); }
+    const hx = hi != null ? xAt(hi) : 0;
+    function pathFor(values, from, to) {
+      return values.slice(from, to + 1).map((v, k) => { const i = from + k; return (k ? "L" : "M") + xAt(i).toFixed(1) + " " + yAt(v).toFixed(1); }).join(" ");
+    }
+    const diamond = (x, y, c) => <rect x={x - 3.5} y={y - 3.5} width="7" height="7" transform={`rotate(45 ${x} ${y})`} fill="var(--surface)" stroke={c} strokeWidth="1.8" />;
+    return (
+      <div ref={ref} style={{ position: "relative", width: "100%", height: H }}>
+        {w > 0 && (
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} onMouseMove={onMove} onMouseLeave={() => setHi(null)}>
+            <defs>
+              {series.map((s, i) => (
+                <pattern key={i} id={uid + "h" + i} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke={s.color} strokeWidth="1.1" opacity="0.5" /></pattern>
+              ))}
+            </defs>
+            {forecastFrom != null && <rect x={xAt(forecastFrom)} y={y0} width={x0 + innerW - xAt(forecastFrom)} height={innerH} fill="var(--surface-2)" opacity="0.6" />}
+            {ticks.map((t, i) => (
+              <g key={i}>
+                <line x1={x0} x2={x0 + innerW} y1={yAt(t)} y2={yAt(t)} stroke="var(--gold-dim)" strokeWidth="1" strokeDasharray="1 5" opacity="0.5" />
+                <text x={x0 - 12} y={yAt(t) + 4} textAnchor="end" fontSize="10.5" fill="var(--text-dim)" fontFamily="JetBrains Mono, monospace">{window.fmtCurrency(t, { compact: true })}</text>
+              </g>
+            ))}
+            {months.map((m, i) => (i % step === 0) && <text key={i} x={xAt(i)} y={H - 9} textAnchor="middle" fontSize="11" fill="var(--text-dim)" fontFamily="EB Garamond, serif" fontStyle="italic">{window.fmtMonth(m)}</text>)}
+            {forecastFrom != null && <line x1={xAt(forecastFrom)} x2={xAt(forecastFrom)} y1={y0} y2={baseY} stroke="var(--gold)" strokeWidth="0.9" strokeDasharray="3 3" opacity="0.6" />}
+            {forecastFrom != null && <text x={xAt(forecastFrom) + 7} y={y0 + 12} fontSize="9.5" fill="var(--gold-dim)" fontFamily="EB Garamond, serif" fontStyle="italic" letterSpacing="0.18em">FORECAST</text>}
+            {area && series.length === 1 && <path d={pathFor(series[0].values, 0, splitAt) + ` L${xAt(splitAt).toFixed(1)} ${baseY} L${x0} ${baseY} Z`} fill={`url(#${uid}h0)`} />}
+            <line x1={x0} x2={x0 + innerW} y1={baseY} y2={baseY} stroke="var(--gold)" strokeWidth="1.2" opacity="0.7" />
+            {series.map((s, si) => (
+              <g key={si}>
+                <path d={pathFor(s.values, 0, splitAt)} fill="none" stroke={s.color} strokeWidth="2.2" strokeLinejoin="round" />
+                {forecastFrom != null && <path d={pathFor(s.values, splitAt, n - 1)} fill="none" stroke={s.color} strokeWidth="2.2" strokeDasharray="5 4" opacity="0.85" />}
+              </g>
+            ))}
+            {hi != null && <line x1={hx} x2={hx} y1={y0} y2={baseY} stroke="var(--gold)" strokeWidth="0.8" strokeDasharray="2 3" opacity="0.7" />}
+            {hi != null && series.map((s, si) => <g key={si}>{diamond(hx, yAt(s.values[hi]), s.color)}</g>)}
+          </svg>
+        )}
+        {hi != null && (
+          <Tip x={hx} W={W} top={CHART_PAD.t + 20}>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--text-strong)", marginBottom: 5 }}>{window.fmtMonth(months[hi])}</div>
+            {series.map((s, i) => <Row key={i} c={s.color} k={s.name} v={s.values[hi]} />)}
+          </Tip>
+        )}
+      </div>
+    );
+  }
 
-Object.assign(window, { Button, Modal, PromptModal, ConfirmModal, Money, CatDot, CategoryPill, Sparkline, StackedBar, BarsChart, LineChart, ChartLegend, EmptyState });
+  /* ===================== Manuscript devices ===================== */
+  function Corners({ inset = 9, size = 28, color = "var(--gold)" }) {
+    const c = (
+      <svg width={size} height={size} viewBox="0 0 28 28" fill="none" stroke={color} strokeWidth="1.1" strokeLinecap="round">
+        <path d="M3 26V11C3 6 6 3 11 3h15" />
+        <path d="M3 17c5 0 8-3 8-8" />
+        <circle cx="3" cy="26" r="1.4" fill={color} stroke="none" />
+        <path d="M14 3c2.5 1 4 3 4 5" opacity="0.7" />
+      </svg>
+    );
+    const base = { position: "absolute", width: size, height: size, pointerEvents: "none", zIndex: 2, opacity: 0.85 };
+    return (
+      <>
+        <span style={{ ...base, left: inset, top: inset }}>{c}</span>
+        <span style={{ ...base, right: inset, top: inset, transform: "scaleX(-1)" }}>{c}</span>
+        <span style={{ ...base, left: inset, bottom: inset, transform: "scaleY(-1)" }}>{c}</span>
+        <span style={{ ...base, right: inset, bottom: inset, transform: "scale(-1,-1)" }}>{c}</span>
+      </>
+    );
+  }
+
+  function Headpiece({ title, sub }) {
+    return (
+      <div style={{ textAlign: "center", margin: "0 0 var(--s2)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, justifyContent: "center" }}>
+          <span style={{ flex: 1, maxWidth: 200, height: 1, background: "linear-gradient(90deg, transparent, var(--gold-dim))" }} />
+          <span style={{ fontFamily: "var(--font-body)", fontStyle: "italic", letterSpacing: "0.22em", textTransform: "uppercase", fontSize: "0.8rem", color: "var(--gold)", whiteSpace: "nowrap" }}>✦ {title} ✦</span>
+          <span style={{ flex: 1, maxWidth: 200, height: 1, background: "linear-gradient(270deg, transparent, var(--gold-dim))" }} />
+        </div>
+        {sub && <div style={{ fontFamily: "var(--font-body)", fontStyle: "italic", color: "var(--text-dim)", fontSize: "0.9rem", marginTop: 4 }}>{sub}</div>}
+      </div>
+    );
+  }
+
+  function Laurel({ size = 230, color = "var(--gold)" }) {
+    const cx = size / 2, cy = size / 2, R = size * 0.42;
+    const leaves = [];
+    const a0 = 105, a1 = 435, count = 19;
+    for (let i = 0; i < count; i++) {
+      const deg = a0 + (a1 - a0) * (i / (count - 1));
+      const a = deg * Math.PI / 180;
+      const lx = cx + Math.cos(a) * R, ly = cy + Math.sin(a) * R;
+      const rot = deg + 90;
+      leaves.push(<ellipse key={i} cx={lx} cy={ly} rx="3" ry="9" fill="none" stroke={color} strokeWidth="1.1" transform={`rotate(${rot} ${lx} ${ly})`} opacity="0.8" />);
+    }
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        {leaves}
+        <circle cx={cx} cy={cy} r={R} fill="none" stroke={color} strokeWidth="0.7" strokeDasharray="2 6" opacity="0.4" />
+      </svg>
+    );
+  }
+
+  /* ===================== Donut ===================== */
+  function Donut({ segments, size = 160, thickness = 22, centerLabel, centerValue }) {
+    const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+    const r = (size - thickness) / 2;
+    const c = 2 * Math.PI * r;
+    let off = 0;
+    return (
+      <div style={{ position: "relative", width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)" }}>
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--surface-2)" strokeWidth={thickness} />
+          {segments.map((s, i) => {
+            const len = (s.value / total) * c;
+            const el = <circle key={i} cx={size/2} cy={size/2} r={r} fill="none" stroke={s.color} strokeWidth={thickness}
+              strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-off} strokeLinecap="butt" />;
+            off += len;
+            return el;
+          })}
+        </svg>
+        {centerValue != null && (
+          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", textAlign: "center" }}>
+            <div>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-dim)", fontWeight: 600 }}>{centerLabel}</div>
+              <div className="num" style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--text-strong)" }}>{centerValue}</div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ===================== EmptyState ===================== */
+  function EmptyState({ iconName = "sparkles", title, children, action }) {
+    return (
+      <div className="empty">
+        <div className="empty-icon"><Icon name={iconName} /></div>
+        <h3>{title}</h3>
+        <p>{children}</p>
+        {action}
+      </div>
+    );
+  }
+
+  Object.assign(window, {
+    useMeasuredWidth, niceCeil, CHART_PAD,
+    Money, Button, CatDot, CategoryPill, Delta, Chip,
+    Sparkline, StackedBar, ChartLegend, BarsChart, LineChart, Donut, EmptyState,
+    Corners, Headpiece, Laurel,
+  });
+})();

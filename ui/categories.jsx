@@ -1,178 +1,92 @@
-// categories.jsx — manage categories and the retained merchant→category rules.
-const { ICONS, Button, CatDot, PromptModal, ConfirmModal } = window;
+// categories.jsx — Sigils & Incantations (categories + rules), real CRUD.
+(function () {
+  const { useState } = React;
+  const { Button, CatDot, Icon } = window;
+  const D = window.DATA;
+  const KIND = { expense: 'toll', income: 'tithe', transfer: 'passage' };
+  const PALETTE = ['#5fae84', '#4f79ad', '#c9a23f', '#8f6fb5', '#3f968f', '#b0403a', '#c06a8e', '#c47a3f', '#3fa0a0', '#5a5bb0'];
+  const rid = (p) => p + '-' + Math.random().toString(36).slice(2, 8);
 
-const PALETTE = ['#3b82f6', '#f59e0b', '#8b5cf6', '#06b6d4', '#ef4444', '#ec4899', '#14b8a6', '#f97316', '#84cc16', '#6366f1', '#2dbd7e', '#9aa0a6'];
+  function Modal({ title, onClose, children, footer }) {
+    return <div className="modal-back" onClick={onClose}><div className="modal" onClick={e => e.stopPropagation()}><div className="modal-head"><h3 style={{ fontSize: '1.1rem' }}>{title}</h3></div><div className="modal-body">{children}</div><div className="modal-foot">{footer}</div></div></div>;
+  }
 
-function CategoriesScreen({ state, setState, pushHistory, pushToast }) {
-  const DZ = window.DZ;
-  const { categories, rules, transactions } = state;
-  const [newCat, setNewCat] = React.useState(false);
-  const [editCat, setEditCat] = React.useState(null);
-  const [confirmCat, setConfirmCat] = React.useState(null);
-  const [newRule, setNewRule] = React.useState(false);
-  const [confirmRule, setConfirmRule] = React.useState(null);
+  function Categories({ app, toast }) {
+    const DZ = window.DZ;
+    const { state, setState, pushHistory } = app;
+    const [nameModal, setNameModal] = useState(null); // {id?, value}
+    const [kindOf, setKindOf] = useState('expense');
+    const [ruleModal, setRuleModal] = useState(false);
+    const [rulePattern, setRulePattern] = useState('');
+    const [ruleCat, setRuleCat] = useState(state.categories[0]?.id || '');
 
-  // Counts per category / per rule for context.
-  const catCount = React.useMemo(() => {
-    const m = {};
-    for (const t of transactions) if (t.categoryId) m[t.categoryId] = (m[t.categoryId] || 0) + 1;
-    return m;
-  }, [transactions]);
-  const ruleCount = React.useMemo(() => {
-    const m = {};
-    for (const r of rules) m[r.id] = 0;
-    for (const t of transactions) {
-      const r = DZ.matchRule(t.raw || t.description, rules);
-      if (r) m[r.id] = (m[r.id] || 0) + 1;
-    }
-    return m;
-  }, [rules, transactions]);
+    const update = (fn, t) => { pushHistory(); setState(fn); if (t) toast(t); };
 
-  const catName = (id) => categories.find(c => c.id === id)?.name || 'Uncategorised';
+    const saveCategory = () => {
+      const name = nameModal.value.trim(); if (!name) return;
+      if (nameModal.id) update(s => ({ ...s, categories: s.categories.map(c => c.id === nameModal.id ? { ...c, name } : c) }));
+      else update(s => ({ ...s, categories: [...s.categories, { id: rid('c'), name, kind: kindOf, color: PALETTE[s.categories.length % PALETTE.length] }] }));
+      setNameModal(null);
+    };
+    const setColor = (id, color) => update(s => ({ ...s, categories: s.categories.map(c => c.id === id ? { ...c, color } : c) }));
+    const setKind = (id, kind) => update(s => ({ ...s, categories: s.categories.map(c => c.id === id ? { ...c, kind } : c) }));
+    const delCategory = (id) => update(s => ({ ...s, categories: s.categories.filter(c => c.id !== id), rules: s.rules.filter(r => r.categoryId !== id), transactions: s.transactions.map(t => t.categoryId === id ? { ...t, categoryId: null } : t) }), 'Sigil unmade');
+    const addRule = () => {
+      const p = rulePattern.trim(); if (!p || !ruleCat) return;
+      update(s => { const rules = [...s.rules, { id: rid('r'), pattern: p.toUpperCase(), categoryId: ruleCat, createdAt: 0 }]; return { ...s, rules, transactions: DZ.applyRules(s.transactions, rules) }; }, 'Incantation inscribed');
+      setRuleModal(false); setRulePattern('');
+    };
+    const delRule = (id) => update(s => ({ ...s, rules: s.rules.filter(r => r.id !== id) }));
+    const reapply = () => update(s => ({ ...s, transactions: DZ.applyRules(s.transactions, s.rules, true) }), `The incantations recast across ${state.transactions.length} inscriptions`);
 
-  const addCategory = (name) => {
-    pushHistory();
-    setState(s => ({ ...s, categories: [...s.categories, { id: 'c-' + Math.random().toString(36).slice(2, 8), name, kind: 'expense', color: PALETTE[s.categories.length % PALETTE.length] }] }));
-  };
-  const updateCategory = (id, patch) => {
-    pushHistory();
-    setState(s => ({ ...s, categories: s.categories.map(c => c.id === id ? { ...c, ...patch } : c) }));
-  };
-  const deleteCategory = (id) => {
-    pushHistory();
-    setState(s => ({
-      ...s,
-      categories: s.categories.filter(c => c.id !== id),
-      rules: s.rules.filter(r => r.categoryId !== id),
-      transactions: s.transactions.map(t => t.categoryId === id ? { ...t, categoryId: null } : t),
-    }));
-    pushToast({ msg: 'Category deleted; its transactions are now uncategorised' });
-  };
+    return (
+      <div className="content wide">
+        <div className="page-head"><div><div className="page-title">Sigils &amp; Incantations</div><div className="page-meta">By what laws thine inscriptions are bound</div></div><Button iconName="refresh" onClick={reapply}>Recast the incantations</Button></div>
+        <div className="grid grid-2" style={{ alignItems: 'start' }}>
+          <div className="card">
+            <div className="card-head"><div className="card-title">Sigils</div><Button variant="ghost" size="sm" iconName="plus" onClick={() => { setKindOf('expense'); setNameModal({ value: '' }); }}>Inscribe</Button></div>
+            <div className="card-body" style={{ paddingTop: 'var(--s2)' }}>
+              {state.categories.map((c, i) => (
+                <div key={c.id} className="row" style={{ justifyContent: 'space-between', padding: '10px 0', borderBottom: i < state.categories.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                  <span className="row" style={{ gap: 11 }}>
+                    <label style={{ position: 'relative', width: 16, height: 16, cursor: 'pointer' }}><span className="cat-dot lg" style={{ background: c.color, width: 16, height: 16, borderRadius: 5 }} /><input type="color" value={c.color} onChange={e => setColor(c.id, e.target.value)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} /></label>
+                    <span style={{ fontWeight: 600, color: 'var(--text-strong)', whiteSpace: 'nowrap' }}>{c.name}</span>
+                    <select className="input" style={{ width: 'auto', padding: '2px 6px', fontSize: '0.8rem' }} value={c.kind} onChange={e => setKind(c.id, e.target.value)}><option value="expense">toll</option><option value="income">tithe</option><option value="transfer">passage</option></select>
+                  </span>
+                  <span className="row" style={{ gap: 'var(--s4)' }}>
+                    <span className="num" style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>{D.catCounts[c.id] || 0} entries</span>
+                    <button className="icon-btn" style={{ width: 30, height: 30 }} onClick={() => setNameModal({ id: c.id, value: c.name })}><Icon name="edit" size={16} /></button>
+                    <button className="icon-btn" style={{ width: 30, height: 30 }} onClick={() => delCategory(c.id)}><Icon name="trash" size={16} /></button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
 
-  const addRule = (pattern, categoryId) => {
-    pushHistory();
-    setState(s => {
-      const rules = [...s.rules, { id: 'r-' + Math.random().toString(36).slice(2, 8), pattern: pattern.toUpperCase(), categoryId, createdAt: 0 }];
-      return { ...s, rules, transactions: DZ.applyRules(s.transactions, rules) };
-    });
-  };
-  const deleteRule = (id) => { pushHistory(); setState(s => ({ ...s, rules: s.rules.filter(r => r.id !== id) })); };
-
-  const reapply = () => {
-    pushHistory();
-    setState(s => ({ ...s, transactions: DZ.applyRules(s.transactions, s.rules, true) }));
-    pushToast({ msg: 'Rules re-applied to all transactions' });
-  };
-
-  return (
-    <div className="content narrow">
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
-        <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700 }}>Categories & rules</h1>
-          <div style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 2 }}>Rules map a description substring to a category and apply to every import.</div>
-        </div>
-        <Button variant="ghost" onClick={reapply} title="Re-run every rule over all transactions">Re-apply rules</Button>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 18, alignItems: 'start' }}>
-        {/* Categories */}
-        <div className="card">
-          <div className="card-head"><h3>Categories</h3><div style={{ flex: 1 }}/><Button size="sm" icon={<ICONS.Plus/>} onClick={() => setNewCat(true)}>Add</Button></div>
-          <div className="card-body" style={{ padding: 0 }}>
-            <table className="table">
-              <thead><tr><th>Name</th><th>Type</th><th className="num">Txns</th><th></th></tr></thead>
-              <tbody>
-                {categories.map(c => (
-                  <tr key={c.id}>
-                    <td>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', position: 'relative' }}>
-                        <input type="color" value={c.color} onChange={e => updateCategory(c.id, { color: e.target.value })}
-                          style={{ width: 16, height: 16, border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}/>
-                        <span style={{ fontWeight: 500 }}>{c.name}</span>
-                      </label>
-                    </td>
-                    <td>
-                      <select className="input" style={{ fontSize: 12, padding: '3px 6px', width: 'auto' }} value={c.kind} onChange={e => updateCategory(c.id, { kind: e.target.value })}>
-                        <option value="expense">Expense</option>
-                        <option value="income">Income</option>
-                        <option value="transfer">Transfer</option>
-                      </select>
-                    </td>
-                    <td className="num" style={{ color: 'var(--text-muted)' }}>{catCount[c.id] || 0}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button className="btn ghost sm icon" title="Rename" onClick={() => setEditCat(c)}><ICONS.Edit size={13}/></button>
-                      <button className="btn ghost sm icon" title="Delete" onClick={() => setConfirmCat(c)}><ICONS.Trash size={13}/></button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="card">
+            <div className="card-head"><div className="card-title">Incantations</div><Button variant="ghost" size="sm" iconName="plus" onClick={() => { setRuleCat(state.categories[0]?.id || ''); setRuleModal(true); }}>Inscribe</Button></div>
+            <div className="card-body" style={{ paddingTop: 'var(--s2)' }}>
+              {D.RULES.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem' }}>No incantations yet — they're forged as thou bestow'st sigils on imports, or inscribe one here.</p> : D.RULES.map((r, i) => {
+                const c = D.catById[r.categoryId];
+                return (
+                  <div key={r.id} className="row" style={{ justifyContent: 'space-between', padding: '10px 0', borderBottom: i < D.RULES.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <span className="row" style={{ gap: 11 }}>
+                      <code style={{ background: 'var(--surface-2)', padding: '3px 9px', borderRadius: 6, fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{r.pattern}</code>
+                      <Icon name="chevronRight" size={14} style={{ color: 'var(--text-dim)' }} />
+                      {c ? <span className="cat-pill"><CatDot color={c.color} />{c.name}</span> : <span className="cat-pill unmapped">—</span>}
+                    </span>
+                    <span className="row" style={{ gap: 'var(--s3)' }}><span className="num" style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>{r.matches}×</span><button className="icon-btn" style={{ width: 30, height: 30 }} onClick={() => delRule(r.id)}><Icon name="trash" size={16} /></button></span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        {/* Rules */}
-        <div className="card">
-          <div className="card-head"><h3>Rules</h3><span className="sub">{rules.length}</span><div style={{ flex: 1 }}/><Button size="sm" icon={<ICONS.Plus/>} onClick={() => setNewRule(true)}>Add rule</Button></div>
-          <div className="card-body" style={{ padding: 0 }}>
-            {rules.length === 0 ? <div style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>No rules yet. They're created as you categorise imports, or add one here.</div> : (
-              <table className="table">
-                <thead><tr><th>If description contains</th><th>Category</th><th className="num">Matches</th><th></th></tr></thead>
-                <tbody>
-                  {rules.map(r => {
-                    const cat = categories.find(c => c.id === r.categoryId);
-                    return (
-                      <tr key={r.id}>
-                        <td><code style={{ fontSize: 12.5, background: 'var(--surface-2)', padding: '2px 6px', borderRadius: 4 }}>{r.pattern}</code></td>
-                        <td>
-                          <select className="input" style={{ fontSize: 12.5, padding: '3px 6px', width: 'auto' }} value={r.categoryId}
-                            onChange={e => { pushHistory(); setState(s => ({ ...s, rules: s.rules.map(x => x.id === r.id ? { ...x, categoryId: e.target.value } : x), transactions: DZ.applyRules(s.transactions, s.rules.map(x => x.id === r.id ? { ...x, categoryId: e.target.value } : x), true) })); }}>
-                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </select>
-                        </td>
-                        <td className="num" style={{ color: 'var(--text-muted)' }}>{ruleCount[r.id] || 0}</td>
-                        <td style={{ textAlign: 'right' }}><button className="btn ghost sm icon" title="Delete" onClick={() => setConfirmRule(r)}><ICONS.Trash size={13}/></button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
+        {nameModal && <Modal title={nameModal.id ? 'Rename sigil' : 'Inscribe a sigil'} onClose={() => setNameModal(null)} footer={<><Button variant="ghost" onClick={() => setNameModal(null)}>Cancel</Button><Button variant="primary" onClick={saveCategory}>Inscribe</Button></>}><div className="field"><label>Name</label><input className="input" autoFocus value={nameModal.value} onChange={e => setNameModal(m => ({ ...m, value: e.target.value }))} onKeyDown={e => e.key === 'Enter' && saveCategory()} placeholder="e.g. Wards & Charms" /></div></Modal>}
+        {ruleModal && <Modal title="Inscribe an incantation" onClose={() => setRuleModal(false)} footer={<><Button variant="ghost" onClick={() => setRuleModal(false)}>Cancel</Button><Button variant="primary" onClick={addRule}>Inscribe</Button></>}><div className="field" style={{ marginBottom: 'var(--s4)' }}><label>When the inscription bears</label><input className="input" autoFocus value={rulePattern} onChange={e => setRulePattern(e.target.value)} placeholder="e.g. COUNTDOWN" /></div><div className="field"><label>Bestow the sigil</label><select className="input" value={ruleCat} onChange={e => setRuleCat(e.target.value)}>{state.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div></Modal>}
       </div>
-
-      <PromptModal open={newCat} title="New category" label="Name" placeholder="e.g. Pets" onClose={() => setNewCat(false)} onSubmit={(n) => { addCategory(n); setNewCat(false); }}/>
-      <PromptModal open={!!editCat} title="Rename category" label="Name" initialValue={editCat?.name || ''} onClose={() => setEditCat(null)} onSubmit={(n) => { updateCategory(editCat.id, { name: n }); setEditCat(null); }}/>
-      <RuleModal open={newRule} categories={categories} onClose={() => setNewRule(false)} onSubmit={(p, c) => { addRule(p, c); setNewRule(false); }}/>
-      <ConfirmModal open={!!confirmCat} title={`Delete “${confirmCat?.name}”?`} body="Its rules are removed and its transactions become uncategorised." confirmLabel="Delete" onConfirm={() => deleteCategory(confirmCat.id)} onClose={() => setConfirmCat(null)}/>
-      <ConfirmModal open={!!confirmRule} title="Delete rule?" body={`Transactions stay as they are; future imports won't use “${confirmRule?.pattern}”.`} confirmLabel="Delete" onConfirm={() => deleteRule(confirmRule.id)} onClose={() => setConfirmRule(null)}/>
-    </div>
-  );
-}
-
-function RuleModal({ open, categories, onClose, onSubmit }) {
-  const [pattern, setPattern] = React.useState('');
-  const [catId, setCatId] = React.useState(categories[0]?.id || '');
-  React.useEffect(() => { if (open) { setPattern(''); setCatId(categories[0]?.id || ''); } }, [open]);
-  if (!open) return null;
-  return (
-    <window.Modal open={open} title="New rule" onClose={onClose}
-      footer={<>
-        <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!pattern.trim() || !catId} onClick={() => onSubmit(pattern.trim(), catId)}>Add rule</Button>
-      </>}>
-      <div className="field" style={{ marginBottom: 12 }}>
-        <label>If description contains</label>
-        <input className="input" value={pattern} placeholder="e.g. WOOLWORTHS" onChange={e => setPattern(e.target.value)} autoFocus/>
-      </div>
-      <div className="field">
-        <label>Category</label>
-        <select className="input" value={catId} onChange={e => setCatId(e.target.value)}>
-          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-      </div>
-    </window.Modal>
-  );
-}
-
-window.CategoriesScreen = CategoriesScreen;
+    );
+  }
+  window.Categories = Categories;
+})();

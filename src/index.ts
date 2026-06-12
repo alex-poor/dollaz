@@ -10,4 +10,5 @@ export * from './qif.js';
 export * from './detect.js';
 export * from './analyze.js';
 export * from './project.js';
+export * from './wellbeing.js';
 export * from './seed.js';

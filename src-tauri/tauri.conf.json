@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Dollaz",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "dev.alexpoor.dollaz",
   "build": {
     "frontendDist": "../ui",
@@ -27,7 +27,8 @@
   "bundle": {
     "active": true,
     "targets": [
-      "appimage"
+      "appimage",
+      "nsis"
     ],
     "category": "Finance",
     "shortDescription": "Personal finance analysis",
@@ -39,7 +40,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   },
   "plugins": {
     "updater": {

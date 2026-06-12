@@ -36,6 +36,14 @@ embedded public key and pull `latest.json` from the latest GitHub Release of
    release. Publish the draft to make it discoverable via
    `releases/latest/download/latest.json`.
 
+## Platforms
+
+- **Linux AppImage** — self-updates in place.
+- **Windows NSIS (.exe)** — built per-user (`installMode: "currentUser"`), so it
+  installs to `%LOCALAPPDATA%` and needs **no administrator rights**. Self-updates
+  in place. Windows binaries are built by CI on a Windows runner (they can't be
+  cross-built from Linux).
+
 ## How updates reach the installed binary
 
 - The app checks the endpoint on launch and every 30 minutes (desktop only).
