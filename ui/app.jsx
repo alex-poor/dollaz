@@ -38,6 +38,7 @@
     { id: 'dashboard', label: 'Sanctum', icon: 'dashboard' },
     { id: 'accounts', label: 'Vaults', icon: 'wallet' },
     { id: 'transactions', label: 'The Ledger', icon: 'transactions' },
+    { id: 'merchants', label: 'The Bazaar', icon: 'coins' },
     { id: 'analysis', label: 'Auguries', icon: 'analysis' },
     { id: 'categories', label: 'Sigils', icon: 'tag' },
   ];
@@ -160,8 +161,8 @@
     );
   }
 
-  function App() {
-    const [state, setState] = useState(() => window.makeInitialState());
+  function App({ initialState }) {
+    const [state, setState] = useState(initialState);
     const [route, setRoute] = useState('dashboard');
     const [drawer, setDrawer] = useState(null);
     const [saving, setSaving] = useState(false);
@@ -188,8 +189,19 @@
     useEffect(() => { document.documentElement.classList.toggle('gilt', tw.gilt); }, [tw.gilt]);
     useEffect(() => { window.setCurrencySymbol(state.settings.currency || '$'); }, [state.settings.currency]);
 
-    // Autosave
-    useEffect(() => { setSaving(true); const t = setTimeout(() => { window.saveState(state); setSaving(false); }, 300); return () => clearTimeout(t); }, [state]);
+    // Autosave (to disk via ffStore, else localStorage). Warn if a save fails
+    // (e.g. disk/quota) so changes are never silently lost.
+    const firstSave = useRef(true);
+    useEffect(() => {
+      if (firstSave.current) { firstSave.current = false; return; } // don't rewrite on initial mount
+      setSaving(true);
+      const t = setTimeout(async () => {
+        const ok = await window.persist(state);
+        setSaving(false);
+        if (!ok) pushToast('Could not inscribe to storage — thy last change is unsaved');
+      }, 300);
+      return () => clearTimeout(t);
+    }, [state]);
 
     // Keyboard undo/redo
     useEffect(() => {
@@ -256,6 +268,24 @@
     );
   }
 
+  // Boot — load persisted state from disk (async) behind a splash, then mount App.
+  function Boot() {
+    const [initial, setInitial] = useState(null);
+    useEffect(() => { let c = false; window.loadInitial().then(s => { if (!c) setInitial(s); }); return () => { c = true; }; }, []);
+    useEffect(() => { document.documentElement.setAttribute('data-theme', 'dark'); }, []);
+    if (!initial) {
+      return (
+        <div style={{ height: '100vh', display: 'grid', placeItems: 'center', color: 'var(--gold-bright)' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontFamily: 'var(--font-black)', fontSize: '2.4rem', textShadow: '0 0 18px color-mix(in srgb, var(--gold) 45%, transparent)' }}>Dollaz</div>
+            <div style={{ fontFamily: 'var(--font-body)', fontStyle: 'italic', color: 'var(--text-dim)', marginTop: 6 }}>unsealing the ledger…</div>
+          </div>
+        </div>
+      );
+    }
+    return <App initialState={initial} />;
+  }
+
   window.App = App;
-  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  ReactDOM.createRoot(document.getElementById('root')).render(<Boot />);
 })();

@@ -11,10 +11,13 @@ signed self-updater.
   - `csv.ts` parse + delimiter/header detection · `normalize.ts` description
     cleaning, `parseAmount`/`parseDate` · `import.ts` CSV+mapping → transactions,
     `guessMapping` · `ofx.ts`/`qif.ts`/`detect.ts` other formats · `categorize.ts`
-    rule matching · `dedupe.ts` (FITID-aware) · `transfers.ts` internal-transfer
-    detection (excluded from income/expense) · `analyze.ts` aggregations ·
-    `project.ts` forecasts · `wellbeing.ts` Augury score + net-worth series ·
-    `seed.ts` grimoire categories/rules · `types.ts` (incl. `Account`) · `index.ts`.
+    rule matching · `merchants.ts` spend-by-merchant grouping · `dedupe.ts`
+    (FITID-aware) · `transfers.ts` internal-transfer detection (excluded from
+    income/expense) · `analyze.ts` aggregations · `forecast.ts` ETS/Holt-Winters
+    (seasonal/damped) + prediction intervals · `cashflow.ts` ratio→recent-income
+    surplus/deficit forecast · `project.ts` (legacy naive forecasts) ·
+    `wellbeing.ts` Augury score + net-worth series · `seed.ts` grimoire
+    categories/rules · `types.ts` (incl. `Account`) · `index.ts`.
 - `tests/core.test.ts` — vitest over `src/`. `npm test`.
 - `ui/` — React `.jsx` (no build-time JSX dep; esbuild `--jsx=transform`).
   **Design: "The Illuminated Ledger" — gilded gothic grimoire, dark-only, arcane
@@ -24,15 +27,19 @@ signed self-updater.
     (a STABLE object, mutated in place) from live state via `DZ`. Screens capture
     `const D = window.DATA` once and read live. `app.jsx` calls it each render.
   - `format.js` → `window.fmtCurrency/...`; `window.setCurrencySymbol` from settings.
-  - `state.jsx` localStorage (`dollaz:v1`): transactions, categories, rules,
-    **accounts**, importFormats, settings (incl. `tweaks`: mood/grain/gilt/brandMark/
-    chartStyle). undo/redo, toasts.
-  - `shared.jsx` primitives + engraved SVG charts + ornament (Corners/Headpiece/
-    Laurel/Donut). `icons.jsx` `Icon`/`ICONS`.
+  - **Persistence: `store-entry.js` → `window.ffStore`** (Tauri `load_data`/
+    `save_data` commands → `<app_data_dir>/dollaz.json`, atomic). `state.jsx`
+    `loadInitial()` (async) reads disk → migrates old `localStorage` → fresh;
+    `persist()` writes disk (Tauri) or localStorage (browser). `app.jsx` mounts a
+    `Boot` splash, then `App`. State: transactions, categories, rules, **accounts**,
+    importFormats, settings (incl. `tweaks`). undo/redo, toasts.
+  - `shared.jsx` primitives + engraved SVG charts (LineChart has signed axis +
+    interval `band`) + ornament (Corners/Headpiece/Laurel/Donut). `icons.jsx`.
   - Screens (route → component): `dashboard.jsx` Sanctum · `accounts.jsx` Vaults ·
-    `transactions.jsx` The Ledger · `analysis.jsx` Auguries · `categories.jsx`
-    Sigils · `import.jsx` The Summoning. Shell/router/updater/settings+tweaks/help
-    in `app.jsx`. Screens get props `{ t, go, toast, app:{state,setState,pushHistory} }`.
+    `transactions.jsx` The Ledger · `merchants.jsx` The Bazaar · `analysis.jsx`
+    Auguries (cashflow surplus/deficit Prophecy) · `categories.jsx` Sigils
+    (multiline marks per sigil) · `import.jsx` The Summoning. Shell/router/updater/
+    settings+tweaks/help in `app.jsx`. Screens get `{ t, go, toast, app:{state,setState,pushHistory,pushToast} }`.
   - `build.sh` assembles `ui/Dollaz.html` (gitignored). **`JSX_ORDER` matters** —
     `derive.js` must precede the screens (it initialises `window.DATA`).
 - `src-tauri/` — Tauri shell; `lib.rs` registers updater + process plugins.

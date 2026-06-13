@@ -70,11 +70,15 @@
     const catSeries = seriesForKind(flow, cats, YMS, 'expense');
     const catSeriesIncome = seriesForKind(flow, cats, YMS, 'income');
 
-    const RULES = state.rules.map(r => ({ ...r, matches: 0 }));
+    const RULES = state.rules.map(r => ({ ...r, matches: 0, total: 0 }));
     const ruleIx = Object.fromEntries(RULES.map((r, i) => [r.id, i]));
     for (const t of txns) {
       const m = DZ.matchRule(t.raw || t.description, state.rules);
-      if (m && ruleIx[m.id] != null) RULES[ruleIx[m.id]].matches++;
+      if (m && ruleIx[m.id] != null) {
+        const r = RULES[ruleIx[m.id]];
+        r.matches++;
+        if (!isTransfer(t) && t.amount < 0) r.total += -t.amount; // spend attributed to this incantation
+      }
     }
 
     const catCounts = {};

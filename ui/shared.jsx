@@ -232,20 +232,24 @@
   }
 
   /* ===================== LineChart (engraved) ===================== */
-  function LineChart({ series, months, height = 260, forecastFrom = null, area = false }) {
+  function LineChart({ series, months, height = 260, forecastFrom = null, area = false, band = null }) {
     const [ref, w] = useMeasuredWidth();
     const [hi, setHi] = useState(null);
     const W = w || 600, H = height;
-    const all = series.flatMap((s) => s.values);
-    const maxV = niceCeil(Math.max(...all, 1));
+    const all = series.flatMap((s) => s.values).concat(band ? [...band.lower, ...band.upper].filter((v) => v != null) : []);
+    const hiV = niceCeil(Math.max(...all, 1));
+    const loRaw = Math.min(0, ...all);
+    const loV = loRaw < 0 ? -niceCeil(-loRaw) : 0; // include zero; nice negative bound for surplus/deficit
+    const range = (hiV - loV) || 1;
     const innerW = W - CHART_PAD.l - CHART_PAD.r;
     const innerH = H - CHART_PAD.t - CHART_PAD.b;
     const x0 = CHART_PAD.l, y0 = CHART_PAD.t, baseY = y0 + innerH;
     const n = months.length;
     const xAt = (i) => x0 + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
-    const yAt = (v) => y0 + innerH * (1 - v / maxV);
+    const yAt = (v) => y0 + innerH * (1 - (v - loV) / range);
+    const zeroY = yAt(0);
     const step = Math.ceil(n / 12);
-    const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => maxV * f);
+    const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => loV + range * f);
     const uid = useMemo(() => "lc" + Math.random().toString(36).slice(2, 7), []);
     const splitAt = forecastFrom != null ? forecastFrom : n - 1;
     function onMove(e) { const r = e.currentTarget.getBoundingClientRect(); const px = (e.clientX - r.left) * (W / r.width); setHi(Math.max(0, Math.min(n - 1, Math.round((px - x0) / (innerW / (n - 1)))))); }
@@ -273,8 +277,15 @@
             {months.map((m, i) => (i % step === 0) && <text key={i} x={xAt(i)} y={H - 9} textAnchor="middle" fontSize="11" fill="var(--text-dim)" fontFamily="EB Garamond, serif" fontStyle="italic">{window.fmtMonth(m)}</text>)}
             {forecastFrom != null && <line x1={xAt(forecastFrom)} x2={xAt(forecastFrom)} y1={y0} y2={baseY} stroke="var(--gold)" strokeWidth="0.9" strokeDasharray="3 3" opacity="0.6" />}
             {forecastFrom != null && <text x={xAt(forecastFrom) + 7} y={y0 + 12} fontSize="9.5" fill="var(--gold-dim)" fontFamily="EB Garamond, serif" fontStyle="italic" letterSpacing="0.18em">FORECAST</text>}
-            {area && series.length === 1 && <path d={pathFor(series[0].values, 0, splitAt) + ` L${xAt(splitAt).toFixed(1)} ${baseY} L${x0} ${baseY} Z`} fill={`url(#${uid}h0)`} />}
-            <line x1={x0} x2={x0 + innerW} y1={baseY} y2={baseY} stroke="var(--gold)" strokeWidth="1.2" opacity="0.7" />
+            {area && series.length === 1 && <path d={pathFor(series[0].values, 0, splitAt) + ` L${xAt(splitAt).toFixed(1)} ${zeroY.toFixed(1)} L${x0} ${zeroY.toFixed(1)} Z`} fill={`url(#${uid}h0)`} />}
+            {band && (() => {
+              const idx = months.map((_, i) => i).filter((i) => band.upper[i] != null && band.lower[i] != null);
+              if (idx.length < 2) return null;
+              const up = idx.map((i) => `${xAt(i).toFixed(1)} ${yAt(band.upper[i]).toFixed(1)}`);
+              const lo = idx.slice().reverse().map((i) => `${xAt(i).toFixed(1)} ${yAt(band.lower[i]).toFixed(1)}`);
+              return <path d={`M${up.join(' L')} L${lo.join(' L')} Z`} fill="var(--accent)" opacity="0.13" />;
+            })()}
+            <line x1={x0} x2={x0 + innerW} y1={zeroY} y2={zeroY} stroke="var(--gold)" strokeWidth="1.2" opacity="0.7" />
             {series.map((s, si) => (
               <g key={si}>
                 <path d={pathFor(s.values, 0, splitAt)} fill="none" stroke={s.color} strokeWidth="2.2" strokeLinejoin="round" />

@@ -9,11 +9,12 @@
     return `${y}-${String(m).padStart(2, '0')}`;
   }
 
+  const METHOD_WORD = { seasonal: 'the turning of the seasons', trend: 'a damped drift', mean: 'recent means' };
+
   function Analysis({ go }) {
     const [mode, setMode] = useState('expense');
-    const [focus, setFocus] = useState('total');
-    const [method, setMethod] = useState('avg');
-    const [horizon, setHorizon] = useState(6);
+    const [level, setLevel] = useState(80);
+    const [horizon, setHorizon] = useState(3);
 
     if (!D.hasData || D.YMS.length < 2) {
       return <div className="content"><EmptyState iconName="analysis" title="No portents yet" action={<Button variant="primary" iconName="importIcon" onClick={() => go('import')}>Summon records</Button>}>At least two moons of inscriptions are needed before the auguries can be cast.</EmptyState></div>;
@@ -21,18 +22,26 @@
 
     const modeSeries = mode === 'expense' ? D.catSeries : D.catSeriesIncome;
     const series = modeSeries.map(s => ({ name: s.name, color: s.color, values: s.values }));
+    const modeWord = mode === 'expense' ? 'toll' : 'tithe';
 
-    const totalSeries = D.MONTHS12.map(m => mode === 'expense' ? m.expenses : m.income);
-    const focusObj = modeSeries.find(s => s.id === focus);
-    const base = focus === 'total' ? totalSeries : (focusObj ? focusObj.values : totalSeries);
-    const proj = window.DZ.project(base, horizon, method, 3);
-    const projValues = [...proj.history, ...proj.forecast];
+    // Cashflow prophecy — forecast the (stabler) spend-to-income ratio, apply it
+    // to recent income, and project surplus/deficit (net) with intervals.
+    const income = D.MONTHS12.map(m => m.income);
+    const expenses = D.MONTHS12.map(m => m.expenses);
+    const netHist = D.MONTHS12.map(m => m.net);
+    const cf = window.DZ.cashflowForecast(income, expenses, horizon, { level });
     const projMonths = [...D.YMS];
     for (let i = 1; i <= horizon; i++) projMonths.push(addMonths(D.YMS[D.YMS.length - 1], i));
-    const horizonTotal = proj.forecast.reduce((s, x) => s + x, 0);
-    const modeWord = mode === 'expense' ? 'toll' : 'tithe';
-    const methodWord = method === 'avg' ? 'the mean' : 'the drift';
-    const focusName = focus === 'total' ? (mode === 'expense' ? 'All tolls' : 'All tithes') : (focusObj ? focusObj.name : 'All');
+    const netValues = [...netHist, ...cf.net.point];
+    const lastNet = netHist[netHist.length - 1];
+    const bandLower = netHist.map(() => null); const bandUpper = netHist.map(() => null);
+    bandLower[netHist.length - 1] = lastNet; bandUpper[netHist.length - 1] = lastNet;
+    cf.net.lower.forEach(v => bandLower.push(v)); cf.net.upper.forEach(v => bandUpper.push(v));
+    const methodWord = METHOD_WORD[cf.method];
+    const nextNet = cf.net.point[0] || 0;
+    const horizonNet = cf.net.point.reduce((s, x) => s + x, 0);
+    const nextRatioPct = Math.round((cf.ratio.point[0] || 0) * 100);
+    const VERDICT = { surplus: 'A surplus foretold', deficit: 'A deficit looms', even: 'Neither surplus nor want' };
 
     return (
       <div className="content wide">
@@ -55,21 +64,26 @@
 
           <div className="card">
             <div className="card-head">
-              <div><div className="card-title">Prophecy</div><div className="card-sub">Foretold spending, by {methodWord} of recent moons</div></div>
+              <div><div className="card-title">Prophecy of Surplus &amp; Want</div><div className="card-sub">Thy spending's turn upon recent income, foretold by {methodWord}</div></div>
               <div className="row" style={{ gap: 'var(--s3)', flexWrap: 'wrap' }}>
-                <select className="input" style={{ width: 'auto' }} value={focus} onChange={(e) => setFocus(e.target.value)}><option value="total">{mode === 'expense' ? 'All spending' : 'All income'}</option>{modeSeries.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-                <div className="seg"><button className={method === 'avg' ? 'active' : ''} onClick={() => setMethod('avg')}>Mean</button><button className={method === 'linear' ? 'active' : ''} onClick={() => setMethod('linear')}>Drift</button></div>
+                <div className="seg" title="Breadth of the prediction interval">{[80, 95].map((l) => <button key={l} className={level === l ? 'active' : ''} onClick={() => setLevel(l)}>{l}%</button>)}</div>
                 <div className="seg">{[3, 6, 12].map((h) => <button key={h} className={horizon === h ? 'active' : ''} onClick={() => setHorizon(h)}>{h} moons</button>)}</div>
               </div>
             </div>
             <div className="card-body">
-              <div className="stat-grid" style={{ marginBottom: 'var(--s5)', gridTemplateColumns: 'repeat(3, 1fr)' }}>
-                <div className="stat"><div className="stat-label">Next moon</div><Money value={proj.forecast[0] || 0} className="stat-value sm" /></div>
-                <div className="stat"><div className="stat-label">Mean per moon</div><Money value={Math.round(proj.monthlyAverage)} className="stat-value sm" /></div>
-                <div className="stat"><div className="stat-label">{horizon}-moon sum</div><Money value={horizonTotal} className="stat-value sm" /></div>
+              <div className="row" style={{ gap: 10, marginBottom: 'var(--s4)' }}>
+                <span style={{ width: 34, height: 34, borderRadius: 9, display: 'grid', placeItems: 'center', flex: 'none', background: `color-mix(in srgb, ${cf.verdict === 'deficit' ? 'var(--neg)' : 'var(--pos)'} 16%, transparent)`, color: cf.verdict === 'deficit' ? 'var(--neg)' : 'var(--pos)' }}><Icon name={cf.verdict === 'deficit' ? 'trendDown' : 'trendUp'} size={18} /></span>
+                <div><div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.3rem', color: 'var(--text-strong)' }}>{VERDICT[cf.verdict]}</div><div style={{ fontSize: '0.86rem', color: 'var(--text-muted)' }}>On recent income of <Money value={cf.recentIncome} className="num" />, spending ~<span className="num">{nextRatioPct}%</span> — about <Money value={Math.abs(nextNet)} className="num" /> {cf.verdict === 'deficit' ? 'short' : 'spare'} each moon.</div></div>
               </div>
-              <LineChart series={[{ name: focusName, color: 'var(--accent)', values: projValues }]} months={projMonths} forecastFrom={D.YMS.length - 1} height={250} area />
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: 8, fontStyle: 'italic' }}>The shaded region is foretold ({method === 'avg' ? 'flat at the 3-moon mean' : 'by the drift, clamped at naught'}). A rough scrying, not prophecy sworn.</div>
+              <div className="stat-grid" style={{ marginBottom: 'var(--s5)', gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                <div className="stat"><div className="stat-label">Next moon</div><Money value={nextNet} className="stat-value sm" colorSign /><div style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginTop: 2 }}>{window.fmtCurrency(cf.net.lower[0], { compact: true })} – {window.fmtCurrency(cf.net.upper[0], { compact: true })}</div></div>
+                <div className="stat"><div className="stat-label">{horizon}-moon balance</div><Money value={horizonNet} className="stat-value sm" colorSign /></div>
+                <div className="stat"><div className="stat-label">Foretold spend ratio</div><div className="stat-value sm num" style={{ fontSize: '1.2rem' }}>{nextRatioPct}%</div></div>
+              </div>
+              <LineChart series={[{ name: 'What remains', color: 'var(--accent)', values: netValues }]} months={projMonths} forecastFrom={D.YMS.length - 1} height={250} band={{ lower: bandLower, upper: bandUpper }} />
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: 8, fontStyle: 'italic' }}>
+                The gold line is zero; above it surplus, below it want. We foretell the spend-to-income ratio ({cf.method === 'seasonal' ? 'by Holt-Winters, weighing the year’s turning' : cf.method === 'trend' ? 'by a damped drift; seasonality awaits two full years' : 'held near its recent mean'}) and lay it upon thy recent income. The shaded region is the {level}% bound of likelihood. A scrying, not prophecy sworn.
+              </div>
             </div>
           </div>
 
@@ -80,15 +94,16 @@
                 <thead><tr><th>Sigil</th><th className="num">3-moon mean</th><th>Omen</th><th className="num">Next moon</th><th className="num">{horizon}-moon sum</th></tr></thead>
                 <tbody>
                   {modeSeries.map((s) => {
-                    const p = window.DZ.project(s.values, horizon, method, 3);
+                    const f = window.DZ.forecast(s.values, horizon, { level });
+                    const avg3 = s.values.slice(-3).reduce((a, b) => a + b, 0) / Math.min(3, s.values.length);
                     const rising = window.DZ.linearRegression(s.values).slope > 0;
                     return (
                       <tr key={s.id}>
                         <td><span className="row" style={{ gap: 9 }}><CatDot color={s.color} lg />{s.name}</span></td>
-                        <td className="num">{window.fmtCurrency(p.monthlyAverage)}</td>
+                        <td className="num">{window.fmtCurrency(avg3)}</td>
                         <td>{rising ? <Chip tone="neg" iconName="trendUp">Waxing</Chip> : <Chip tone="pos" iconName="trendDown">Waning</Chip>}</td>
-                        <td className="num">{window.fmtCurrency(p.forecast[0] || 0)}</td>
-                        <td className="num" style={{ fontWeight: 600 }}>{window.fmtCurrency(p.forecast.reduce((a, b) => a + b, 0))}</td>
+                        <td className="num">{window.fmtCurrency(f.point[0] || 0)}</td>
+                        <td className="num" style={{ fontWeight: 600 }}>{window.fmtCurrency(f.point.reduce((a, b) => a + b, 0))}</td>
                       </tr>
                     );
                   })}

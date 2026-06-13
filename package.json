@@ -1,6 +1,6 @@
 {
   "name": "dollaz",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Personal finance analysis — import bank CSVs, auto-categorise, dashboard trends and projections. Local-only desktop app.",
   "type": "module",
   "private": true,

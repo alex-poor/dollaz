@@ -1,3 +1,22 @@
+# Dollaz 0.4.0
+
+- **Unlimited local storage.** Your ledger is now kept in a file on disk
+  (`dollaz.json`) instead of the browser's ~5 MB cap — years of statements fit
+  easily, it survives app updates, and a failed save now warns you instead of
+  silently dropping data. Existing data migrates automatically on first launch.
+- **The Bazaar** — a new screen ranking spend by **merchant/payee** (mapped or
+  not), searchable ("how much have I paid Countdown?"), with per-merchant trends.
+- **Sigils, rebuilt.** One row per sigil; expand it to edit its marks as a simple
+  **multiline list** (one merchant per line), with **per-mark spend** shown
+  (e.g. `COUNTDOWN — 18× · $1,240`).
+- **Real forecasting.** Prophecy is now a proper statistical forecast
+  (Holt-Winters / exponential smoothing — seasonal with ≥ 2 years of history,
+  damped trend otherwise) **with prediction intervals**. And it forecasts the
+  stabler **spend-to-income ratio** applied to recent income, so you see a
+  projected **surplus or deficit** — not noisy raw dollars.
+
+---
+
 # Dollaz 0.3.2
 
 - **Vaults are created automatically from OFX imports.** Each imported account

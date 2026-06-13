@@ -12,7 +12,7 @@ REACT_UMD=../node_modules/react/umd/react.production.min.js
 REACT_DOM_UMD=../node_modules/react-dom/umd/react-dom.production.min.js
 # Order matters — components register on window and read each other off it.
 # derive.js initialises window.DATA before the screens capture it.
-JSX_ORDER=(icons.jsx shared.jsx state.jsx derive.js dashboard.jsx accounts.jsx transactions.jsx analysis.jsx import.jsx categories.jsx app.jsx)
+JSX_ORDER=(icons.jsx shared.jsx state.jsx derive.js dashboard.jsx accounts.jsx transactions.jsx merchants.jsx analysis.jsx import.jsx categories.jsx app.jsx)
 
 [[ -x "$ESBUILD" ]] || { echo "error: esbuild not found (run: npm install)"; exit 1; }
 [[ -f "$REACT_UMD" ]] || { echo "error: React UMD not found (run: npm install)"; exit 1; }
@@ -20,7 +20,8 @@ JSX_ORDER=(icons.jsx shared.jsx state.jsx derive.js dashboard.jsx accounts.jsx t
 COMPILED=$(mktemp --suffix=.js)
 CORE=$(mktemp --suffix=.js)
 UPDATER=$(mktemp --suffix=.js)
-trap 'rm -f "$COMPILED" "$CORE" "$UPDATER"' EXIT
+STORE=$(mktemp --suffix=.js)
+trap 'rm -f "$COMPILED" "$CORE" "$UPDATER" "$STORE"' EXIT
 
 # Domain core: bundle ../src through core-entry.js → window.DZ (single source of truth).
 "$ESBUILD" core-entry.js --bundle --format=iife --minify --platform=browser > "$CORE"
@@ -34,6 +35,9 @@ done > "$COMPILED"
 
 # Tauri updater glue (no-ops in a browser).
 "$ESBUILD" updater-entry.js --bundle --format=iife --minify --platform=browser > "$UPDATER"
+
+# Disk-backed store bridge (window.ffStore; no-ops in a browser).
+"$ESBUILD" store-entry.js --bundle --format=iife --minify --platform=browser > "$STORE"
 
 {
 cat <<'HTML_HEAD'
@@ -65,6 +69,7 @@ echo '/* ReactDOM UMD (production) */'; cat "$REACT_DOM_UMD"; echo
 echo '/* Dollaz domain core (bundled from ../src → window.DZ) */'; cat "$CORE"; echo
 echo '/* Formatting helpers */'; cat format.js; echo
 echo '/* Tauri updater glue */'; cat "$UPDATER"; echo
+echo '/* Disk-backed store bridge (window.ffStore) */'; cat "$STORE"; echo
 echo '/* Dollaz UI — JSX pre-compiled with esbuild */'; cat "$COMPILED"
 
 cat <<'HTML_FOOT'
