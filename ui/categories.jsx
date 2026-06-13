@@ -31,13 +31,39 @@
     const setColor = (id, color) => update(s => ({ ...s, categories: s.categories.map(c => c.id === id ? { ...c, color } : c) }));
     const setKind = (id, kind) => update(s => ({ ...s, categories: s.categories.map(c => c.id === id ? { ...c, kind } : c) }));
     const delCategory = (id) => update(s => ({ ...s, categories: s.categories.filter(c => c.id !== id), rules: s.rules.filter(r => r.categoryId !== id), transactions: s.transactions.map(t => t.categoryId === id ? { ...t, categoryId: null } : t) }), 'Sigil unmade');
+    // Compare before/after to report what an incantation change actually did.
+    const tally = (before, after) => {
+      let named = 0, resigiled = 0;
+      for (let i = 0; i < before.length; i++) {
+        const b = before[i], a = after[i];
+        if (b.categoryId === a.categoryId) continue;
+        if (!b.categoryId) named++; else if (a.categoryId) resigiled++;
+      }
+      return { named, resigiled };
+    };
+    const tallyMsg = (verb, { named, resigiled }) =>
+      named || resigiled
+        ? `${verb} — ${named} newly named${resigiled ? `, ${resigiled} re-sigiled` : ''}`
+        : `${verb} — naught changed`;
+
     const addRule = () => {
       const p = rulePattern.trim(); if (!p || !ruleCat) return;
-      update(s => { const rules = [...s.rules, { id: rid('r'), pattern: p.toUpperCase(), categoryId: ruleCat, createdAt: 0 }]; return { ...s, rules, transactions: DZ.applyRules(s.transactions, rules) }; }, 'Incantation inscribed');
+      const rule = { id: rid('r'), pattern: p.toUpperCase(), categoryId: ruleCat, createdAt: 0 };
+      const before = state.transactions;
+      const after = DZ.applyRules(before, [...state.rules, rule]);
+      pushHistory();
+      setState(s => ({ ...s, rules: [...s.rules, rule], transactions: DZ.applyRules(s.transactions, [...s.rules, rule]) }));
+      toast(tallyMsg('Incantation inscribed', tally(before, after)));
       setRuleModal(false); setRulePattern('');
     };
     const delRule = (id) => update(s => ({ ...s, rules: s.rules.filter(r => r.id !== id) }));
-    const reapply = () => update(s => ({ ...s, transactions: DZ.applyRules(s.transactions, s.rules, true) }), `The incantations recast across ${state.transactions.length} inscriptions`);
+    const reapply = () => {
+      const before = state.transactions;
+      const after = DZ.applyRules(before, state.rules, true);
+      pushHistory();
+      setState(s => ({ ...s, transactions: DZ.applyRules(s.transactions, s.rules, true) }));
+      toast(tallyMsg('Incantations recast', tally(before, after)));
+    };
 
     return (
       <div className="content wide">
