@@ -66,6 +66,12 @@ describe('parseOfx', () => {
     expect(wool.raw).toContain('WOOLWORTHS');
     expect(transactions[1]!.amount).toBe(4200);
   });
+  it('extracts account metadata (id, kind, balance) for auto-create', () => {
+    const { accounts } = parseOfx(OFX_SGML, 'imp');
+    expect(accounts.length).toBe(1);
+    expect(accounts[0]!.id).toBe('12345678');
+    expect(accounts[0]!.kind).toBe('spending'); // CHECKING
+  });
   it('parses XML (closed tags)', () => {
     const { transactions } = parseOfx(OFX_XML, 'imp');
     expect(transactions.length).toBe(1);

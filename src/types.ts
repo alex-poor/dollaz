@@ -23,6 +23,8 @@ export interface Account {
   limit?: number | null;   // credit limit
   contrib?: number | null; // retire contribution %
   returns12?: number | null; // retire 12-mo return %
+  balanceDate?: string | null; // ISO date the balance was last synced from an import
+  auto?: boolean;          // created automatically from an imported account id
 }
 
 export interface Category {

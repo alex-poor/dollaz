@@ -6,6 +6,21 @@
   const STEPS = ['Summon', 'Scry', 'Name', 'Sealed'];
   const rid = (p) => p + '-' + Math.random().toString(36).slice(2, 9);
 
+  // Vault defaults when auto-creating from an imported account.
+  const KIND_ICON = { spending: 'card', saving: 'piggy', credit: 'card', retire: 'growth' };
+  const KIND_COLOR = { spending: '#c9a23f', saving: '#5a5bb0', credit: '#c47a3f', retire: '#5fae84' };
+  const KIND_NAME = { spending: 'Daily Coffer', saving: 'The Reserve', credit: 'The Debt-Bond', retire: 'The Long Slumber' };
+  const mask = (id) => '•• ' + String(id).slice(-4);
+  function upsertVaults(accounts, ofxAccounts) {
+    let out = accounts;
+    for (const oa of ofxAccounts) {
+      const i = out.findIndex(a => a.id === oa.id);
+      if (i >= 0) out = out.map(a => a.id === oa.id ? { ...a, balance: oa.balance != null ? oa.balance : a.balance, balanceDate: oa.balanceDate || a.balanceDate } : a);
+      else out = [...out, { id: oa.id, name: KIND_NAME[oa.kind] + ' ' + mask(oa.id), inst: '', kind: oa.kind, balance: oa.balance != null ? oa.balance : 0, balanceDate: oa.balanceDate || null, color: KIND_COLOR[oa.kind], icon: KIND_ICON[oa.kind], num: mask(oa.id), auto: true }];
+    }
+    return out;
+  }
+
   function Stepper({ step }) {
     return (
       <div className="stepper" style={{ marginBottom: 'var(--s7)' }}>
@@ -45,6 +60,7 @@
     const [groups, setGroups] = useState([]);
     const [assign, setAssign] = useState({});
     const [patterns, setPatterns] = useState({});
+    const [ofxAccounts, setOfxAccounts] = useState([]);
 
     const handleText = (text, name) => {
       const fmt = DZ.detectFormat(name, text);
@@ -80,6 +96,7 @@
       const grps = DZ.groupUnmapped(cat);
       setFresh(cat); setDupes(ded.duplicates); setSkipped(built.skipped); setGroups(grps);
       setPatterns(Object.fromEntries(grps.map(g => [g.pattern, g.pattern]))); setAssign({});
+      setOfxAccounts(built.accounts || []);
       setStep(2);
     };
 
@@ -93,7 +110,9 @@
         const merged = DZ.markTransfers(DZ.applyRules([...s.transactions, ...fresh], rules)).transactions;
         let importFormats = s.importFormats;
         if (format === 'csv' && rememberName.trim() && prepared) { importFormats = importFormats.filter(f => f.signature !== prepared.signature).concat([{ id: rid('fmt'), name: rememberName.trim(), signature: prepared.signature, mapping }]); }
-        return { ...s, rules, transactions: merged, importFormats, firstRun: false };
+        // Auto-create / sync vaults from the OFX account(s) and their statement balances.
+        const accounts = upsertVaults(s.accounts, ofxAccounts);
+        return { ...s, rules, transactions: merged, importFormats, accounts, firstRun: false };
       });
       setStep(3);
     };
@@ -185,7 +204,7 @@
           <div className="card"><div className="card-body" style={{ textAlign: 'center', padding: 'var(--s9) var(--s6)' }}>
             <div className="empty-icon" style={{ margin: '0 auto var(--s4)', background: 'color-mix(in srgb, var(--pos) 18%, transparent)', color: 'var(--pos)' }}><Icon name="check" /></div>
             <h3 style={{ fontSize: '1.4rem' }}><span className="num">{fresh.length}</span> inscriptions bound to the ledger</h3>
-            <p style={{ color: 'var(--text-muted)', maxWidth: 380, margin: '8px auto var(--s5)' }}>{dupes > 0 ? `${dupes} twins were cast out. ` : ''}{skipped > 0 ? `${skipped} could not be read. ` : ''}Thy sanctum and sigils are reckoned anew.</p>
+            <p style={{ color: 'var(--text-muted)', maxWidth: 380, margin: '8px auto var(--s5)' }}>{dupes > 0 ? `${dupes} twins were cast out. ` : ''}{skipped > 0 ? `${skipped} could not be read. ` : ''}{ofxAccounts.length ? `${ofxAccounts.length} vault${ofxAccounts.length > 1 ? 's' : ''} bound and their balances synced. ` : ''}Thy sanctum and sigils are reckoned anew.</p>
             <Button variant="primary" onClick={() => go('dashboard')}>Return to the sanctum</Button>
           </div></div>
         )}

@@ -1,3 +1,17 @@
+# Dollaz 0.3.2
+
+- **Vaults are created automatically from OFX imports.** Each imported account
+  becomes a vault (keyed to the bank's account id), and its **balance is synced
+  from the statement** on every import — no manual entry. Already imported before
+  this? **The Vaults screen offers "Derive N from the ledger."** Manual binding
+  stays for accounts you don't import (e.g. KiwiSaver).
+- Vault cards show the balance's "as of" date; per-vault monthly in/out now lines
+  up with imported transactions (vault id = account id).
+- **Sigils:** recasting or inscribing an incantation now reports how many
+  inscriptions were **newly named** (and how many re-sigiled), not the total.
+
+---
+
 # Dollaz 0.3.1
 
 - **Internal transfers no longer inflate income/expenses.** Money moved between

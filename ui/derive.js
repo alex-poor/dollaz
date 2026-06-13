@@ -93,13 +93,22 @@
 
     const wb = DZ.wellbeing(flow, liquid || acctTotal || 0);
 
+    // Imported account labels that have no matching vault yet (for auto-derive).
+    const vaultIds = new Set(state.accounts.map(a => a.id));
+    const seenAcct = new Set();
+    const unlinkedAccountIds = [];
+    for (const t of txns) {
+      const acc = (t.account || '').trim();
+      if (acc && !vaultIds.has(acc) && !seenAcct.has(acc)) { seenAcct.add(acc); unlinkedAccountIds.push(acc); }
+    }
+
     Object.assign(window.DATA, {
       CATS: cats, catById, UNCAT,
       ACCOUNTS: state.accounts, acctTotal, liquid,
       YMS, MONTHS12: MONTHS, NETWORTH, CATSPEND, catSeries, catSeriesIncome,
       TXNS: txns, RULES, catCounts,
       uncatCount, uncatTotal, thisMonth, prevMonth, avgSpend, ytdSurplus, savingsRate,
-      transferCount, transferSuggested,
+      transferCount, transferSuggested, unlinkedAccountIds,
       wb, hasData: txns.length > 0,
     });
   }

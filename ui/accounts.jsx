@@ -11,6 +11,7 @@
     retire: { label: 'The long sleep', icon: 'growth', color: '#5fae84' },
   };
   const rid = () => 'a-' + Math.random().toString(36).slice(2, 8);
+  const mask = (id) => '•• ' + String(id).slice(-4);
 
   // inflow/outflow for an account in the latest month
   function monthFlow(accId) {
@@ -45,6 +46,7 @@
             <button className="icon-btn" onClick={() => onEdit(a)}><Icon name="dots" size={18} /></button>
           </div>
           <Money value={a.balance} className="num" style={{ fontSize: '1.85rem', fontWeight: 700, letterSpacing: '-0.02em', color: a.balance < 0 ? 'var(--neg)' : 'var(--text-strong)', display: 'block', marginTop: 14 }} />
+          {a.balanceDate && <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginTop: 2 }}>balance as of {window.fmtDate(a.balanceDate)}</div>}
           {detail}
         </div>
       </div>
@@ -81,22 +83,42 @@
   }
 
   function Accounts({ go, app }) {
-    const { setState, pushHistory } = app;
+    const { setState, pushHistory, pushToast } = app;
     const [modal, setModal] = useState(null);
     const nw = D.NETWORTH;
     const cur = nw.length ? nw[nw.length - 1].value : D.acctTotal;
     const prev = nw.length > 1 ? nw[nw.length - 2].value : cur;
+    const unlinked = D.unlinkedAccountIds || [];
 
     const blank = () => ({ name: '', inst: '', kind: 'spending', balance: '', icon: 'card', color: KIND_META.spending.color, _autoColor: true, num: '' });
     const save = (acc) => { pushHistory(); setState(s => acc.id ? { ...s, accounts: s.accounts.map(a => a.id === acc.id ? acc : a) } : { ...s, accounts: [...s.accounts, { ...acc, id: rid() }] }); setModal(null); };
     const del = (id) => { pushHistory(); setState(s => ({ ...s, accounts: s.accounts.filter(a => a.id !== id) })); setModal(null); };
+    const deriveVaults = () => {
+      pushHistory();
+      setState(s => {
+        const have = new Set(s.accounts.map(a => a.id));
+        const add = (window.DATA.unlinkedAccountIds || []).filter(id => !have.has(id)).map(id => ({ id, name: 'Vault ' + mask(id), inst: '', kind: 'spending', balance: 0, color: KIND_META.spending.color, icon: 'card', num: mask(id), auto: true }));
+        return { ...s, accounts: [...s.accounts, ...add] };
+      });
+      pushToast('Vaults derived from the ledger — set their balances, or re-import to sync');
+    };
 
     return (
       <div className="content wide">
-        <div className="page-head"><div><div className="page-title">The Vaults</div><div className="page-meta">All thou hoardest, gathered in one ledger</div></div><Button iconName="plus" onClick={() => setModal(blank())}>Bind a vault</Button></div>
+        <div className="page-head">
+          <div><div className="page-title">The Vaults</div><div className="page-meta">All thou hoardest, gathered in one ledger</div></div>
+          <div className="row" style={{ gap: 'var(--s3)' }}>
+            {unlinked.length > 0 && <Button iconName="wallet" onClick={deriveVaults}>Derive <span className="num">{unlinked.length}</span> from the ledger</Button>}
+            <Button iconName="plus" onClick={() => setModal(blank())}>Bind a vault</Button>
+          </div>
+        </div>
 
         {D.ACCOUNTS.length === 0 ? (
-          <EmptyState iconName="wallet" title="No vaults yet bound" action={<Button variant="primary" iconName="plus" onClick={() => setModal(blank())}>Bind a vault</Button>}>Bind thy coffers, reserves, debt-bonds and the long slumber, that their sum be reckoned as one hoard.</EmptyState>
+          <EmptyState iconName="wallet" title="No vaults yet bound" action={<div className="row" style={{ gap: 'var(--s3)', justifyContent: 'center' }}>{unlinked.length > 0 && <Button variant="primary" iconName="wallet" onClick={deriveVaults}>Derive {unlinked.length} from the ledger</Button>}<Button variant={unlinked.length ? '' : 'primary'} iconName="plus" onClick={() => setModal(blank())}>Bind a vault</Button></div>}>
+            {unlinked.length > 0
+              ? 'Thy imported scrolls already name their accounts. Derive vaults from them in one stroke — OFX imports will keep their balances synced — or bind one by hand.'
+              : 'Vaults appear on their own when thou summon’st OFX scrolls (their balances sync each import). Bind one by hand for what thou dost not import — a KiwiSaver, say.'}
+          </EmptyState>
         ) : (
           <div className="grid" style={{ gap: 'var(--s5)' }}>
             <div className="card fade-up">
