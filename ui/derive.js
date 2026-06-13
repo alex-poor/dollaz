@@ -26,7 +26,20 @@
     const allMonths = DZ.monthRange(txns);
     const YMS = allMonths.length > 18 ? allMonths.slice(allMonths.length - 18) : allMonths;
 
-    const mtByYm = Object.fromEntries(DZ.monthlyTotals(txns).map(m => [m.month, m]));
+    // Internal transfers (flagged, or in a transfer-kind sigil) are excluded from
+    // all income/expense analytics — they're the same money moving between vaults.
+    const transferKind = new Set(cats.filter(c => c.kind === 'transfer').map(c => c.id));
+    const isTransfer = (t) => t.transfer || (t.categoryId && transferKind.has(t.categoryId));
+    const flow = txns.filter(t => !isTransfer(t));
+
+    const pairs = DZ.detectTransfers(txns);
+    const detectedIds = DZ.transferIds(pairs);
+    const byId = Object.fromEntries(txns.map(t => [t.id, t]));
+    let transferSuggested = 0;
+    for (const id of detectedIds) if (byId[id] && !byId[id].transfer) transferSuggested++;
+    const transferCount = txns.reduce((n, t) => n + (t.transfer ? 1 : 0), 0);
+
+    const mtByYm = Object.fromEntries(DZ.monthlyTotals(flow).map(m => [m.month, m]));
     const MONTHS = YMS.map(ym => {
       const m = mtByYm[ym] || { income: 0, expense: 0, net: 0 };
       return { ym, income: m.income, expenses: m.expense, net: m.net };
@@ -37,14 +50,14 @@
       .filter(a => a.kind === 'spending' || a.kind === 'saving')
       .reduce((s, a) => s + (a.balance || 0), 0);
 
-    const nwTarget = state.accounts.length ? acctTotal : DZ.monthlyTotals(txns).reduce((s, m) => s + m.net, 0);
-    const nwByYm = Object.fromEntries(DZ.netWorthSeries(txns, nwTarget).map(p => [p.ym, p.value]));
+    const nwTarget = state.accounts.length ? acctTotal : DZ.monthlyTotals(flow).reduce((s, m) => s + m.net, 0);
+    const nwByYm = Object.fromEntries(DZ.netWorthSeries(flow, nwTarget).map(p => [p.ym, p.value]));
     const NETWORTH = YMS.map(ym => ({ ym, value: nwByYm[ym] != null ? nwByYm[ym] : 0 }));
 
     // Latest-month spend by category (incl. uncategorised), biggest first.
     const lastYm = YMS[YMS.length - 1];
     const spend = new Map();
-    for (const t of txns) {
+    for (const t of flow) {
       if (t.amount >= 0) continue;
       if (lastYm && t.date.slice(0, 7) !== lastYm) continue;
       const k = t.categoryId || '__null__';
@@ -54,8 +67,8 @@
       .map(([k, amount]) => ({ catId: k === '__null__' ? null : k, amount }))
       .sort((a, b) => b.amount - a.amount);
 
-    const catSeries = seriesForKind(txns, cats, YMS, 'expense');
-    const catSeriesIncome = seriesForKind(txns, cats, YMS, 'income');
+    const catSeries = seriesForKind(flow, cats, YMS, 'expense');
+    const catSeriesIncome = seriesForKind(flow, cats, YMS, 'income');
 
     const RULES = state.rules.map(r => ({ ...r, matches: 0 }));
     const ruleIx = Object.fromEntries(RULES.map((r, i) => [r.id, i]));
@@ -73,12 +86,12 @@
     const ytdSurplus = MONTHS.reduce((s, m) => s + m.net, 0);
     const savingsRate = thisMonth.income > 0 ? Math.round((thisMonth.net / thisMonth.income) * 100) : 0;
 
-    const uncatCount = DZ.unmappedCount(txns);
+    const uncatCount = DZ.unmappedCount(flow);
     const uncatSpend = CATSPEND.find(c => c.catId === null);
     const uncatTotal = uncatSpend ? uncatSpend.amount
-      : txns.reduce((s, t) => s + (t.amount < 0 && !t.categoryId ? -t.amount : 0), 0);
+      : flow.reduce((s, t) => s + (t.amount < 0 && !t.categoryId ? -t.amount : 0), 0);
 
-    const wb = DZ.wellbeing(txns, liquid || acctTotal || 0);
+    const wb = DZ.wellbeing(flow, liquid || acctTotal || 0);
 
     Object.assign(window.DATA, {
       CATS: cats, catById, UNCAT,
@@ -86,6 +99,7 @@
       YMS, MONTHS12: MONTHS, NETWORTH, CATSPEND, catSeries, catSeriesIncome,
       TXNS: txns, RULES, catCounts,
       uncatCount, uncatTotal, thisMonth, prevMonth, avgSpend, ytdSurplus, savingsRate,
+      transferCount, transferSuggested,
       wb, hasData: txns.length > 0,
     });
   }

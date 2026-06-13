@@ -4,6 +4,7 @@ export * from './csv.js';
 export * from './normalize.js';
 export * from './categorize.js';
 export * from './dedupe.js';
+export * from './transfers.js';
 export * from './import.js';
 export * from './ofx.js';
 export * from './qif.js';

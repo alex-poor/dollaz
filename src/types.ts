@@ -51,6 +51,7 @@ export interface Transaction {
   categoryId: string | null;
   importId: string;      // which import batch introduced it
   fitid?: string;        // bank's unique transaction id (OFX only); used for dedupe
+  transfer?: boolean;    // internal transfer between own accounts — excluded from income/expense
 }
 
 /** How incoming CSV columns map onto the canonical fields.

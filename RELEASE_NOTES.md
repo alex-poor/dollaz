@@ -1,3 +1,15 @@
+# Dollaz 0.3.1
+
+- **Internal transfers no longer inflate income/expenses.** Money moved between
+  your own vaults — transfers and credit-card payments — is detected (matching
+  equal-and-opposite amounts across accounts within a few days), set apart, and
+  excluded from income, expenses, net and category spend. Imports flag these
+  automatically; The Ledger gains a **Reconcile transfers** action for data
+  imported earlier, a **Transfers** filter, and a per-row "⇄ Transfer" option so
+  you can mark or unmark anything by hand.
+
+---
+
 # Dollaz 0.3.0 — "The Illuminated Ledger"
 
 A complete visual redesign and a new accounts feature.

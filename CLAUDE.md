@@ -11,7 +11,8 @@ signed self-updater.
   - `csv.ts` parse + delimiter/header detection · `normalize.ts` description
     cleaning, `parseAmount`/`parseDate` · `import.ts` CSV+mapping → transactions,
     `guessMapping` · `ofx.ts`/`qif.ts`/`detect.ts` other formats · `categorize.ts`
-    rule matching · `dedupe.ts` (FITID-aware) · `analyze.ts` aggregations ·
+    rule matching · `dedupe.ts` (FITID-aware) · `transfers.ts` internal-transfer
+    detection (excluded from income/expense) · `analyze.ts` aggregations ·
     `project.ts` forecasts · `wellbeing.ts` Augury score + net-worth series ·
     `seed.ts` grimoire categories/rules · `types.ts` (incl. `Account`) · `index.ts`.
 - `tests/core.test.ts` — vitest over `src/`. `npm test`.

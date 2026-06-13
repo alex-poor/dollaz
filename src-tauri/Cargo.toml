@@ -1,6 +1,6 @@
 [package]
 name = "dollaz"
-version = "0.3.0"
+version = "0.3.1"
 description = "Dollaz — Personal Finance Analysis"
 authors = ["alex-poor"]
 license = ""

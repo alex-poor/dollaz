@@ -89,7 +89,8 @@
       for (const g of groups) { const catId = assign[g.pattern]; const pat = (patterns[g.pattern] || g.pattern).trim(); if (catId && pat) newRules.push({ id: rid('r'), pattern: pat.toUpperCase(), categoryId: catId, createdAt: 0 }); }
       setState(s => {
         const rules = [...s.rules, ...newRules];
-        const merged = DZ.applyRules([...s.transactions, ...fresh], rules);
+        // Auto-flag internal transfers (incl. credit-card payments) across vaults.
+        const merged = DZ.markTransfers(DZ.applyRules([...s.transactions, ...fresh], rules)).transactions;
         let importFormats = s.importFormats;
         if (format === 'csv' && rememberName.trim() && prepared) { importFormats = importFormats.filter(f => f.signature !== prepared.signature).concat([{ id: rid('fmt'), name: rememberName.trim(), signature: prepared.signature, mapping }]); }
         return { ...s, rules, transactions: merged, importFormats, firstRun: false };
