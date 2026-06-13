@@ -17,12 +17,43 @@ permissions:
   contents: write
   actions: write
 
-# Opt Node-based actions into Node 24 now; required from June 2026.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # Create the draft release ONCE (tags only) so the two platform builds upload
+  # to the same release instead of each racing to create its own draft.
+  create-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.mk.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: mk
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const tag = context.ref.replace('refs/tags/', '');
+            const owner = context.repo.owner, repo = context.repo.repo;
+            const rels = await github.paginate(github.rest.repos.listReleases, { owner, repo, per_page: 100 });
+            let rel = rels.find(r => r.tag_name === tag);
+            if (!rel) {
+              const body = fs.existsSync('RELEASE_NOTES.md') ? fs.readFileSync('RELEASE_NOTES.md', 'utf8') : 'See the assets below to download and install this version.';
+              rel = (await github.rest.repos.createRelease({ owner, repo, tag_name: tag, name: `Dollaz ${tag}`, body, draft: true, prerelease: false })).data;
+              core.info(`Created draft release ${rel.id} for ${tag}`);
+            } else {
+              core.info(`Reusing existing release ${rel.id} for ${tag}`);
+            }
+            core.setOutput('release_id', String(rel.id));
+
   build:
+    needs: create-release
+    # Run on tags (after create-release) and also on PRs/dispatch (create-release skipped).
+    if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
@@ -54,25 +85,8 @@ jobs:
 
       - run: npm ci
 
-      - name: Read release notes
-        id: notes
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          if [ -f RELEASE_NOTES.md ]; then
-            {
-              echo 'body<<EOF'
-              cat RELEASE_NOTES.md
-              echo 'EOF'
-            } >> "$GITHUB_OUTPUT"
-          else
-            {
-              echo 'body<<EOF'
-              echo 'See the assets below to download and install this version.'
-              echo 'EOF'
-            } >> "$GITHUB_OUTPUT"
-          fi
-
+      # On tags: upload bundles to the single pre-created release (releaseId set).
+      # On PR/dispatch: releaseId is empty, so tauri-action just builds.
       - uses: tauri-apps/tauri-action@v0
         id: tauri
         env:
@@ -80,11 +94,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Dollaz {0}', github.ref_name) || '' }}
-          releaseBody: ${{ steps.notes.outputs.body }}
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release_id }}
 
       - name: Delete prior artifacts for this platform (keep only latest)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -92,19 +102,9 @@ jobs:
         with:
           script: |
             const name = `dollaz-${{ matrix.platform }}`;
-            const { data } = await github.rest.actions.listArtifactsForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name,
-              per_page: 100,
-            });
+            const { data } = await github.rest.actions.listArtifactsForRepo({ owner: context.repo.owner, repo: context.repo.repo, name, per_page: 100 });
             for (const a of data.artifacts) {
-              core.info(`Deleting prior artifact ${a.name} (id ${a.id})`);
-              await github.rest.actions.deleteArtifact({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                artifact_id: a.id,
-              });
+              await github.rest.actions.deleteArtifact({ owner: context.repo.owner, repo: context.repo.repo, artifact_id: a.id });
             }
 
       - name: Upload artifacts (non-release runs)
@@ -117,8 +117,7 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: ignore
 
-  # After the build finishes, build latest.json and attach it to the draft
-  # release so the in-app updater can discover new versions.
+  # Build a combined latest.json (linux + windows) and attach to the release.
   publish-manifest:
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
@@ -127,7 +126,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
       - name: Generate latest.json and attach to release
         uses: actions/github-script@v7
         env:
@@ -136,76 +134,34 @@ jobs:
           script: |
             const tag = process.env.TAG;
             const version = tag.replace(/^v/, '');
-            // getReleaseByTag doesn't find drafts; list and match by tag instead.
-            const releases = await github.paginate(github.rest.repos.listReleases, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 100,
-            });
+            const owner = context.repo.owner, repo = context.repo.repo;
+            const releases = await github.paginate(github.rest.repos.listReleases, { owner, repo, per_page: 100 });
             const release = releases.find(r => r.tag_name === tag);
-            if (!release) {
-              throw new Error(`No release (draft or published) found for tag ${tag}`);
-            }
+            if (!release) throw new Error(`No release found for tag ${tag}`);
 
             const assets = release.assets;
             const pick = (pred) => assets.find(a => pred(a.name));
-            // .sig assets live on a draft release; fetch via API (octet-stream)
-            // since browser_download_url 404s until the release is published.
             const readSig = async (sigAsset) => {
               if (!sigAsset) return null;
-              const res = await github.request('GET /repos/{owner}/{repo}/releases/assets/{asset_id}', {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                asset_id: sigAsset.id,
-                headers: { accept: 'application/octet-stream' },
-              });
+              const res = await github.request('GET /repos/{owner}/{repo}/releases/assets/{asset_id}', { owner, repo, asset_id: sigAsset.id, headers: { accept: 'application/octet-stream' } });
               return Buffer.from(res.data).toString('utf8').trim();
             };
-            const stableUrl = (name) =>
-              `https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/${tag}/${name}`;
+            const stableUrl = (name) => `https://github.com/${owner}/${repo}/releases/download/${tag}/${name}`;
 
-            const linuxAppImage = pick(n => /\.AppImage$/.test(n) && !/\.sig$/.test(n));
-            const linuxAppImageSig = pick(n => n === (linuxAppImage && linuxAppImage.name + '.sig'));
             const winNsis = pick(n => /\.exe$/i.test(n) && !/\.sig$/i.test(n));
             const winNsisSig = pick(n => n === (winNsis && winNsis.name + '.sig'));
+            const linuxAppImage = pick(n => /\.AppImage$/.test(n) && !/\.sig$/.test(n));
+            const linuxAppImageSig = pick(n => n === (linuxAppImage && linuxAppImage.name + '.sig'));
 
             const platforms = {};
-            if (linuxAppImage) {
-              platforms['linux-x86_64'] = {
-                signature: await readSig(linuxAppImageSig) || '',
-                url: stableUrl(linuxAppImage.name),
-              };
-            }
-            if (winNsis) {
-              platforms['windows-x86_64'] = {
-                signature: await readSig(winNsisSig) || '',
-                url: stableUrl(winNsis.name),
-              };
-            }
+            if (winNsis) platforms['windows-x86_64'] = { signature: await readSig(winNsisSig) || '', url: stableUrl(winNsis.name) };
+            if (linuxAppImage) platforms['linux-x86_64'] = { signature: await readSig(linuxAppImageSig) || '', url: stableUrl(linuxAppImage.name) };
 
-            const manifest = {
-              version,
-              notes: release.body || '',
-              pub_date: release.published_at || new Date().toISOString(),
-              platforms,
-            };
-
+            const manifest = { version, notes: release.body || '', pub_date: release.published_at || new Date().toISOString(), platforms };
             const fs = require('fs');
             fs.writeFileSync('latest.json', JSON.stringify(manifest, null, 2));
             core.info(JSON.stringify(manifest, null, 2));
 
             const existing = assets.find(a => a.name === 'latest.json');
-            if (existing) {
-              await github.rest.repos.deleteReleaseAsset({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                asset_id: existing.id,
-              });
-            }
-            await github.rest.repos.uploadReleaseAsset({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: release.id,
-              name: 'latest.json',
-              data: fs.readFileSync('latest.json'),
-            });
+            if (existing) await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: existing.id });
+            await github.rest.repos.uploadReleaseAsset({ owner, repo, release_id: release.id, name: 'latest.json', data: fs.readFileSync('latest.json') });
