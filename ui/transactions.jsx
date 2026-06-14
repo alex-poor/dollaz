@@ -8,20 +8,48 @@
     const [q, setQ] = useState('');
     const [filter, setFilter] = useState('all');
     const [limit, setLimit] = useState(40);
+    const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
     const cats = D.CATS;
 
     if (!D.TXNS.length) {
       return <div className="content"><EmptyState iconName="transactions" title="The ledger is bare" action={<Button variant="primary" iconName="importIcon" onClick={() => go('import')}>Summon records</Button>}>No inscriptions yet. Summon a bank scroll to fill the ledger.</EmptyState></div>;
     }
 
+    const acctName = (id) => (D.ACCOUNTS.find((a) => a.id === id) || {}).name || (id || '—');
+    const sigilName = (r) => r.transfer ? '￿' : r.categoryId ? (D.catById[r.categoryId]?.name || '￾') : '￾'; // transfers last, unnamed before named
+    const KEYFN = {
+      date: (r) => r.date, desc: (r) => (r.description || '').toLowerCase(),
+      vault: (r) => acctName(r.account).toLowerCase(), sum: (r) => Math.abs(r.amount),
+      sigil: (r) => sigilName(r).toLowerCase(),
+    };
+    const DEFAULT_DIR = { date: 'desc', desc: 'asc', vault: 'asc', sum: 'desc', sigil: 'asc' };
+    const onSort = (key) => setSort(s => s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: DEFAULT_DIR[key] });
+
     let rows = D.TXNS;
     if (q) rows = rows.filter((r) => (r.description + ' ' + r.raw).toLowerCase().includes(q.toLowerCase()));
     if (filter === 'uncat') rows = rows.filter((r) => !r.categoryId && !r.transfer);
     else if (filter === 'transfer') rows = rows.filter((r) => r.transfer);
     else if (filter !== 'all') rows = rows.filter((r) => r.categoryId === filter && !r.transfer);
-    rows = [...rows].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    const keyfn = KEYFN[sort.key];
+    rows = [...rows].sort((a, b) => {
+      const va = keyfn(a), vb = keyfn(b);
+      let c = va < vb ? -1 : va > vb ? 1 : 0;
+      if (c === 0) c = b.date.localeCompare(a.date) || b.id.localeCompare(a.id); // stable tiebreak: newest first
+      else if (sort.dir === 'desc') c = -c;
+      return c;
+    });
     const shown = rows.slice(0, limit);
-    const acctName = (id) => (D.ACCOUNTS.find((a) => a.id === id) || {}).name || (id || '—');
+
+    function Th({ k, label, num, width }) {
+      const active = sort.key === k;
+      return (
+        <th className={num ? 'num' : ''} style={{ width, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} onClick={() => onSort(k)} title="Sort by this column">
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: active ? 'var(--gold)' : 'inherit' }}>
+            {label}<Icon name={active ? (sort.dir === 'asc' ? 'arrowUp' : 'arrowDown') : 'arrowDown'} size={12} style={{ opacity: active ? 0.9 : 0.25 }} />
+          </span>
+        </th>
+      );
+    }
 
     const reSigil = (txnId, value) => {
       app.pushHistory();
@@ -58,7 +86,7 @@
         <div className="card" style={{ overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <table className="table">
-              <thead><tr><th style={{ width: 90 }}>When</th><th>Inscription</th><th style={{ width: 130 }}>Vault</th><th className="num" style={{ width: 130 }}>Sum</th><th style={{ width: 220 }}>Sigil</th></tr></thead>
+              <thead><tr><Th k="date" label="When" width={90} /><Th k="desc" label="Inscription" /><Th k="vault" label="Vault" width={130} /><Th k="sum" label="Sum" num width={130} /><Th k="sigil" label="Sigil" width={220} /></tr></thead>
               <tbody>
                 {shown.map((r) => {
                   const cat = r.categoryId ? D.catById[r.categoryId] : null;

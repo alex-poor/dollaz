@@ -1,3 +1,18 @@
+# Dollaz 0.4.1
+
+- **The Crossroads** (Auguries) — a "what-if" panel under the Prophecy. When a
+  deficit is foretold, slide each spending area up or down (or "forsake" it
+  wholly) and watch the projected **surplus/deficit move live**, with the swing
+  it brings. Areas are apportioned from your recent spending share; income is
+  held at its recent level.
+- **Sortable Ledger** — click any column to sort (Sum sorts largest-first), so
+  filtering to **Unnamed** and ordering by value puts the biggest items on top.
+- **Automatic backups** — before each save, the previous ledger is snapshotted
+  to `…/dev.alexpoor.dollaz/backups/` (rolling, last 20), so a bad write can
+  always be rolled back. Writes are atomic (temp + rename).
+
+---
+
 # Dollaz 0.4.0
 
 - **Unlimited local storage.** Your ledger is now kept in a file on disk

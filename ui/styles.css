@@ -684,3 +684,22 @@ button { font-family: inherit; }
 
 /* keep real content above the watermark */
 .main > .content { position: relative; z-index: 1; }
+
+/* ---------- Crossroads what-if slider ---------- */
+.dz-slider {
+  -webkit-appearance: none; appearance: none;
+  height: 4px; border-radius: 100px; outline: none; cursor: pointer;
+  background: var(--surface-3);
+  accent-color: var(--gold);
+}
+.dz-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--gold); border: 2px solid var(--surface);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5), 0 0 8px color-mix(in srgb, var(--gold) 45%, transparent);
+  cursor: pointer;
+}
+.dz-slider::-moz-range-thumb {
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--gold); border: 2px solid var(--surface); cursor: pointer;
+}

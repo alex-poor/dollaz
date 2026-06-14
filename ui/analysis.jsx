@@ -15,6 +15,7 @@
     const [mode, setMode] = useState('expense');
     const [level, setLevel] = useState(80);
     const [horizon, setHorizon] = useState(3);
+    const [adj, setAdj] = useState({}); // {catId: factor} for the Crossroads what-if
 
     if (!D.hasData || D.YMS.length < 2) {
       return <div className="content"><EmptyState iconName="analysis" title="No portents yet" action={<Button variant="primary" iconName="importIcon" onClick={() => go('import')}>Summon records</Button>}>At least two moons of inscriptions are needed before the auguries can be cast.</EmptyState></div>;
@@ -42,6 +43,14 @@
     const horizonNet = cf.net.point.reduce((s, x) => s + x, 0);
     const nextRatioPct = Math.round((cf.ratio.point[0] || 0) * 100);
     const VERDICT = { surplus: 'A surplus foretold', deficit: 'A deficit looms', even: 'Neither surplus nor want' };
+
+    // The Crossroads — what-if: apportion the forecast spend by recent share,
+    // then scale each area to see the surplus/deficit it would bring.
+    const shares = window.DZ.expenseShares(D.catSeries, expenses, 6);
+    const scen = window.DZ.applyScenario(cf.recentIncome, cf.expense.point, shares, adj);
+    const avg = (a) => a.reduce((s, x) => s + x, 0) / (a.length || 1);
+    const baseNetMo = avg(scen.baseNet), scenNetMo = avg(scen.scenNet), swing = scenNetMo - baseNetMo;
+    const setFactor = (id, f) => setAdj(a => { const n = { ...a }; if (f === 1) delete n[id]; else n[id] = f; return n; });
 
     return (
       <div className="content wide">
@@ -84,6 +93,36 @@
               <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: 8, fontStyle: 'italic' }}>
                 The gold line is zero; above it surplus, below it want. We foretell the spend-to-income ratio ({cf.method === 'seasonal' ? 'by Holt-Winters, weighing the year’s turning' : cf.method === 'trend' ? 'by a damped drift; seasonality awaits two full years' : 'held near its recent mean'}) and lay it upon thy recent income. The shaded region is the {level}% bound of likelihood. A scrying, not prophecy sworn.
               </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <div><div className="card-title">The Crossroads</div><div className="card-sub">Temper thy spending, and behold the fate it brings</div></div>
+              {Object.keys(adj).length > 0 && <Button variant="ghost" iconName="refresh" onClick={() => setAdj({})}>Restore all</Button>}
+            </div>
+            <div className="card-body">
+              <div className="row" style={{ gap: 'var(--s6)', alignItems: 'center', marginBottom: 'var(--s5)', flexWrap: 'wrap' }}>
+                <div><div className="stat-label">As foretold</div><Money value={baseNetMo} className="num" style={{ fontSize: '1.5rem', fontWeight: 700 }} colorSign /><div style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>each moon</div></div>
+                <Icon name="chevronRight" size={20} style={{ color: 'var(--text-dim)' }} />
+                <div><div className="stat-label" style={{ color: 'var(--gold)' }}>Shouldst thou temper it</div><Money value={scenNetMo} className="num" style={{ fontSize: '1.85rem', fontWeight: 700 }} colorSign /><div style={{ fontSize: '0.74rem', color: scenNetMo >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{scenNetMo >= 0 ? 'a surplus' : 'a deficit'} · {window.fmtCurrency(scen.monthlySaving, { compact: true })} spared/moon</div></div>
+                {Math.abs(swing) > 1 && <span className={'chip ' + (swing > 0 ? 'pos' : 'neg')} style={{ fontSize: '0.92rem' }}><Icon name={swing > 0 ? 'trendUp' : 'trendDown'} size={14} />{swing > 0 ? '+' : '−'}<Money value={Math.abs(swing)} className="num" /> swing</span>}
+              </div>
+              <div className="grid" style={{ gap: 2 }}>
+                {scen.rows.filter(r => r.baseMonthly > 0.5).map((r) => {
+                  const pct = Math.round((r.factor - 1) * 100);
+                  return (
+                    <div key={r.id} className="row" style={{ gap: 'var(--s4)', padding: '8px var(--s2)', borderBottom: '1px solid var(--border)' }}>
+                      <span className="row" style={{ gap: 9, width: 170, flex: 'none' }}><span style={{ width: 11, height: 11, transform: 'rotate(45deg)', background: r.color, flex: 'none' }} /><span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: r.id === '__other__' ? 'var(--text-muted)' : 'var(--text)', fontStyle: r.id === '__other__' ? 'italic' : 'normal' }}>{r.name}</span></span>
+                      <input type="range" className="dz-slider" min="-100" max="50" step="5" value={pct} onChange={(e) => setFactor(r.id, 1 + Number(e.target.value) / 100)} style={{ flex: 1, minWidth: 120 }} />
+                      <span className="num" style={{ width: 56, textAlign: 'right', color: pct < 0 ? 'var(--pos)' : pct > 0 ? 'var(--neg)' : 'var(--text-dim)', fontWeight: 600 }}>{pct > 0 ? '+' : ''}{pct}%</span>
+                      <span className="num" style={{ width: 96, textAlign: 'right', color: 'var(--text-strong)' }}>{window.fmtCurrency(r.scenMonthly, { compact: true })}<span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>/mo</span></span>
+                      <button className="btn ghost sm" style={{ flex: 'none', color: r.factor === 0 ? 'var(--neg)' : 'var(--text-muted)' }} onClick={() => setFactor(r.id, r.factor === 0 ? 1 : 0)} title="Forsake this entirely">{r.factor === 0 ? 'forsaken' : 'forsake'}</button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: 'var(--s4)', fontStyle: 'italic' }}>Each area is reckoned from its recent share of thy spending and the forecast total. Slide to cut or swell it; “forsake” halts it wholly. Income is held at its recent level.</div>
             </div>
           </div>
 
