@@ -703,3 +703,65 @@ button { font-family: inherit; }
   width: 15px; height: 15px; border-radius: 50%;
   background: var(--gold); border: 2px solid var(--surface); cursor: pointer;
 }
+
+/* ---------- The Oracle (chat) ---------- */
+.content.oracle-screen { display: flex; flex-direction: column; overflow: hidden; padding-bottom: var(--s5); max-width: 940px; margin: 0 auto; width: 100%; }
+.oracle-screen .page-head { flex: none; }
+.oracle-body { flex: 1; overflow-y: auto; padding: var(--s2) var(--s1) var(--s4); display: flex; flex-direction: column; gap: var(--s4); }
+
+.oracle-welcome { margin: auto; text-align: center; max-width: 520px; }
+.oracle-sugg { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: center; }
+.oracle-sugg .chip { cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+.oracle-sugg .chip:hover { color: var(--gold-bright); border-color: var(--gold-dim); }
+
+.oracle-row { display: flex; }
+.oracle-row.me { justify-content: flex-end; }
+.oracle-bubble {
+  max-width: 84%;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); padding: var(--s3) var(--s4);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.3);
+}
+.oracle-bubble.me {
+  background: var(--accent-soft); border-color: var(--gold-dim);
+  color: var(--text-strong); white-space: pre-wrap; font-size: 1.06rem; line-height: 1.55;
+}
+.oracle-text { line-height: 1.68; color: var(--text); font-size: 1.06rem; }
+.oracle-text.dim { color: var(--text-dim); }
+.oracle-text strong { color: var(--text-strong); font-weight: 700; }
+.oracle-text em { font-style: italic; }
+.oracle-p { margin: 0 0 var(--s2); }
+.oracle-p:last-child { margin-bottom: 0; }
+.oracle-h { font-family: var(--font-display); font-weight: 700; color: var(--text-strong); font-size: 1.02rem; margin: var(--s2) 0 4px; }
+.oracle-list { margin: 0 0 var(--s2); padding-left: 1.3em; }
+.oracle-list:last-child { margin-bottom: 0; }
+.oracle-list li { margin: 2px 0; line-height: 1.55; }
+.oracle-code { font-family: var(--font-mono); font-size: 0.86em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: var(--gold-bright); }
+.oracle-table-wrap { overflow-x: auto; margin: var(--s2) 0; }
+.oracle-md-table { border-collapse: collapse; font-size: 0.96rem; width: 100%; }
+.oracle-md-table th, .oracle-md-table td { border: 1px solid var(--border); padding: 4px 9px; text-align: left; }
+.oracle-md-table th { color: var(--text-strong); background: var(--surface-2); font-weight: 600; white-space: nowrap; }
+.oracle-md-table td { color: var(--text); }
+.oracle-md-table td .num, .oracle-md-table td:last-child { font-variant-numeric: tabular-nums; }
+.oracle-cursor { animation: pulse 1s infinite; color: var(--gold); }
+
+.oracle-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s3); padding-top: var(--s2); border-top: 1px dashed var(--border); }
+.oracle-tool {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--font-body); font-style: italic; font-size: 0.78rem;
+  color: var(--gold-dim);
+}
+.oracle-tool svg { opacity: 0.8; }
+
+.oracle-note {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-family: var(--font-body); font-style: italic; font-size: 0.85rem;
+  color: var(--text-dim); line-height: 1.5;
+}
+.oracle-note svg { flex: none; margin-top: 2px; }
+.oracle-note.err { color: var(--neg); font-style: normal; }
+
+.oracle-compose { flex: none; display: flex; gap: var(--s2); align-items: flex-end; padding-top: var(--s3); border-top: 1px solid var(--border); }
+.oracle-input { flex: 1; resize: none; max-height: 160px; line-height: 1.5; font-family: var(--font-body); font-size: 1.04rem; }
+.oracle-compose .btn { flex: none; height: 42px; }
+.oracle-foot { flex: none; display: flex; align-items: center; gap: 6px; margin-top: var(--s2); font-size: 0.74rem; color: var(--text-dim); font-style: italic; }

@@ -44,6 +44,7 @@
     const renameCategory = (id, name) => { pushHistory(); setState(s => ({ ...s, categories: s.categories.map(c => c.id === id ? { ...c, name } : c) })); };
     const setColor = (id, color) => { pushHistory(); setState(s => ({ ...s, categories: s.categories.map(c => c.id === id ? { ...c, color } : c) })); };
     const setKind = (id, kind) => { pushHistory(); setState(s => ({ ...s, categories: s.categories.map(c => c.id === id ? { ...c, kind } : c) })); };
+    const setCore = (id, core) => { pushHistory(); setState(s => ({ ...s, categories: s.categories.map(c => c.id === id ? { ...c, core } : c) })); };
     const delCategory = (id) => { pushHistory(); setState(s => ({ ...s, categories: s.categories.filter(c => c.id !== id), rules: s.rules.filter(r => r.categoryId !== id), transactions: s.transactions.map(t => t.categoryId === id ? { ...t, categoryId: null } : t) })); toast('Sigil unmade'); if (expanded === id) setExpanded(null); };
     const reapply = () => {
       const before = state.transactions;
@@ -76,6 +77,7 @@
                       <label style={{ position: 'relative', width: 16, height: 16, cursor: 'pointer', flex: 'none' }}><span className="cat-dot lg" style={{ background: c.color, width: 16, height: 16, borderRadius: 5 }} /><input type="color" value={c.color} onChange={e => setColor(c.id, e.target.value)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} /></label>
                       <span style={{ fontWeight: 600, color: 'var(--text-strong)', whiteSpace: 'nowrap' }}>{c.name}</span>
                       <select className="input" style={{ width: 'auto', padding: '2px 6px', fontSize: '0.8rem' }} value={c.kind} onChange={e => setKind(c.id, e.target.value)}><option value="expense">toll</option><option value="income">tithe</option><option value="transfer">passage</option></select>
+                      {c.kind === 'expense' && <select className="input" style={{ width: 'auto', padding: '2px 6px', fontSize: '0.8rem' }} value={c.core === false ? 'disc' : 'core'} onChange={e => setCore(c.id, e.target.value === 'core')} title="Core (baseline) spend feeds the Prophecy; discretionary one-offs are set aside so they don't skew it"><option value="core">baseline</option><option value="disc">discretionary</option></select>}
                     </span>
                     <span className="row" style={{ gap: 'var(--s3)' }}>
                       <span className="num" style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>{pats.length} mark{pats.length === 1 ? '' : 's'} · {D.catCounts[c.id] || 0} bound</span>

@@ -12,7 +12,7 @@ REACT_UMD=../node_modules/react/umd/react.production.min.js
 REACT_DOM_UMD=../node_modules/react-dom/umd/react-dom.production.min.js
 # Order matters — components register on window and read each other off it.
 # derive.js initialises window.DATA before the screens capture it.
-JSX_ORDER=(icons.jsx shared.jsx state.jsx derive.js dashboard.jsx accounts.jsx transactions.jsx merchants.jsx analysis.jsx import.jsx categories.jsx app.jsx)
+JSX_ORDER=(icons.jsx shared.jsx state.jsx derive.js dashboard.jsx accounts.jsx transactions.jsx merchants.jsx analysis.jsx import.jsx categories.jsx oracle.jsx app.jsx)
 
 [[ -x "$ESBUILD" ]] || { echo "error: esbuild not found (run: npm install)"; exit 1; }
 [[ -f "$REACT_UMD" ]] || { echo "error: React UMD not found (run: npm install)"; exit 1; }

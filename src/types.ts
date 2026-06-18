@@ -32,6 +32,10 @@ export interface Category {
   name: string;
   kind: CategoryKind;
   color: string; // hex, used in charts
+  /** Baseline/recurring essential (core) vs one-off/discretionary spend.
+   *  Undefined or true = core; false = discretionary. Discretionary expense is
+   *  excluded from the (core) cashflow forecast so lumpy one-offs don't skew it. */
+  core?: boolean;
 }
 
 /** A retained merchant→category mapping. `pattern` is matched as a

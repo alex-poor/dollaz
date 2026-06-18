@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wellbeing, netWorthSeries, type Transaction } from '../src/index.js';
+import { wellbeing, netWorthSeries, type Transaction, type Category } from '../src/index.js';
 
 function tx(date: string, amount: number, categoryId: string | null = null): Transaction {
   return { id: date + amount, date, amount, description: 'x', raw: 'x', account: '', categoryId, importId: 'i' };
@@ -30,6 +30,24 @@ describe('wellbeing', () => {
     const w = wellbeing([], 0);
     expect(w.score).toBeLessThanOrEqual(25);
     expect(w.signals[0]!.ok).toBe(false);
+  });
+
+  it('with categories, a one-off discretionary outlay does not sink the score', () => {
+    const cats: Category[] = [
+      { id: 'inc', name: 'Tithes', kind: 'income', color: '#1' },
+      { id: 'g', name: 'Provisions', kind: 'expense', color: '#2', core: true },
+      { id: 'h', name: 'Home Improvement', kind: 'expense', color: '#3', core: false },
+    ];
+    // Last month carries a big discretionary one-off on top of modest core spend.
+    const oneOff = [
+      tx('2026-05-01', 5000, 'inc'), tx('2026-05-05', -1000, 'g'),
+      tx('2026-06-01', 5000, 'inc'), tx('2026-06-05', -1000, 'g'), tx('2026-06-20', -4000, 'h'),
+    ];
+    const allBasis = wellbeing(oneOff, 6000);          // no categories → counts the one-off
+    const coreBasis = wellbeing(oneOff, 6000, cats);   // core only
+    expect(coreBasis.savingsRate).toBeGreaterThan(allBasis.savingsRate); // one-off ignored
+    expect(coreBasis.bufferMonths).toBeGreaterThan(allBasis.bufferMonths); // buffer = months of core
+    expect(coreBasis.score).toBeGreaterThan(allBasis.score);
   });
 });
 

@@ -46,6 +46,8 @@
     trash: <><path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7"/><path d="M10 11v6M14 11v6"/></>,
     flag: <><path d="M5 21V4"/><path d="M5 4h11l-2 3.5L16 11H5"/></>,
     leaf: <><path d="M5 19c0-7 5-12 14-12 0 9-5 14-12 14-1 0-2-.2-2-2Z"/><path d="M9 15c2-3 4-4 7-5"/></>,
+    eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/><path d="M12 3.5v1.5M12 19v1.5" opacity="0.5"/></>,
+    send: <><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></>,
   };
 
   function Icon({ name, size = 24, style, strokeWidth = 1.75, ...rest }) {

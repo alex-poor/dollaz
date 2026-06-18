@@ -60,6 +60,33 @@ export function monthlyTotals(txns: Transaction[]): MonthlyTotal[] {
   return months.map(m => map.get(m)!);
 }
 
+/** A category is discretionary when its `core` flag is explicitly false;
+ *  undefined or true means core (baseline/essential). */
+export function isDiscretionary(cat?: Category | null): boolean {
+  return !!cat && cat.core === false;
+}
+
+export interface ExpenseSplit { months: string[]; core: number[]; discretionary: number[]; }
+
+/** Monthly expense split into core vs discretionary, aligned to the full range.
+ *  Pass already-flow-filtered transactions (transfers excluded). Uncategorised
+ *  spend counts as core (conservative — we don't drop unknowns from the baseline). */
+export function expenseSplit(txns: Transaction[], categories: Category[]): ExpenseSplit {
+  const months = monthRange(txns);
+  const idx = new Map(months.map((m, i) => [m, i]));
+  const disc = new Set(categories.filter(c => c.core === false).map(c => c.id));
+  const core = months.map(() => 0);
+  const discretionary = months.map(() => 0);
+  for (const t of txns) {
+    if (t.amount >= 0) continue;
+    const i = idx.get(monthOf(t.date));
+    if (i == null) continue;
+    if (t.categoryId && disc.has(t.categoryId)) discretionary[i]! += -t.amount;
+    else core[i]! += -t.amount;
+  }
+  return { months, core, discretionary };
+}
+
 export interface CategoryTotal { categoryId: string; name: string; color: string; total: number; count: number; }
 
 /** Absolute spend per category (expenses only by default), biggest first. */

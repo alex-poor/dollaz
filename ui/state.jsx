@@ -7,8 +7,14 @@ const DZStorageKey = 'dollaz:v1';
 function defaultTweaks() {
   return { mood: '#c9a23f', grain: true, gilt: true, brandMark: 'seal', chartStyle: 'net' };
 }
+function defaultAI() {
+  // The Oracle. Note: the API key is NOT kept here — it lives in localStorage
+  // (window.dzAI), kept out of app state so it never enters undo snapshots,
+  // disk backups, or the CSV export. Only non-secret preferences live in state.
+  return { model: 'claude-opus-4-8' };
+}
 function defaultSettings() {
-  return { currency: '$', projectionMethod: 'avg', projectionMonths: 6, tweaks: defaultTweaks() };
+  return { currency: '$', projectionMethod: 'avg', projectionMonths: 6, tweaks: defaultTweaks(), ai: defaultAI() };
 }
 function freshState() {
   return {
@@ -26,6 +32,7 @@ function freshState() {
 function applyDefaults(saved) {
   saved.settings = { ...defaultSettings(), ...(saved.settings || {}) };
   saved.settings.tweaks = { ...defaultTweaks(), ...(saved.settings.tweaks || {}) };
+  saved.settings.ai = { ...defaultAI(), ...(saved.settings.ai || {}) };
   if (!Array.isArray(saved.importFormats)) saved.importFormats = [];
   if (!Array.isArray(saved.transactions)) saved.transactions = [];
   if (!Array.isArray(saved.accounts)) saved.accounts = [];

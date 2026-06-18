@@ -1,7 +1,7 @@
 // wellbeing.ts — a 0–100 financial-wellbeing ("Augury") score plus a synthetic
 // net-worth trajectory, derived from real transactions + current balances.
-import type { Transaction } from './types.js';
-import { monthlyTotals } from './analyze.js';
+import type { Category, Transaction } from './types.js';
+import { monthlyTotals, expenseSplit } from './analyze.js';
 
 export interface Signal { label: string; ok: boolean; }
 export interface Wellbeing {
@@ -19,13 +19,24 @@ const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
  *  - savings rate (target 20% of income kept)
  *  - emergency buffer (target 6 months of expenses in liquid balance)
  *  - share of spend that's been categorised (cleaner ledger = higher)
+ *
+ * When `categories` are supplied, the savings rate and emergency buffer reckon
+ * CORE (essential) expense only — so a one-off discretionary outlay (landscaping,
+ * a new couch) doesn't distort thy standing, and the buffer counts months of
+ * essentials thou couldst weather. Without categories, all expense is used.
  */
-export function wellbeing(txns: Transaction[], liquidBalance: number): Wellbeing {
+export function wellbeing(txns: Transaction[], liquidBalance: number, categories?: Category[]): Wellbeing {
   const months = monthlyTotals(txns);
   const recent = months.slice(-3);
-  const avgExpense = recent.length ? recent.reduce((s, m) => s + m.expense, 0) / recent.length : 0;
+  let coreByMonth: Map<string, number> | null = null;
+  if (categories) {
+    const sp = expenseSplit(txns, categories);
+    coreByMonth = new Map(sp.months.map((m, i) => [m, sp.core[i]!]));
+  }
+  const expOf = (m: { month: string; expense: number }) => (coreByMonth ? (coreByMonth.get(m.month) ?? m.expense) : m.expense);
+  const avgExpense = recent.length ? recent.reduce((s, m) => s + expOf(m), 0) / recent.length : 0;
   const last = months[months.length - 1];
-  const savingsRate = last && last.income > 0 ? last.net / last.income : 0;
+  const savingsRate = last && last.income > 0 ? (last.income - expOf(last)) / last.income : 0;
   const bufferMonths = avgExpense > 0 ? liquidBalance / avgExpense : (liquidBalance > 0 ? 6 : 0);
 
   let exp = 0, uncatExp = 0;
@@ -42,7 +53,7 @@ export function wellbeing(txns: Transaction[], liquidBalance: number): Wellbeing
 
   const signals: Signal[] = [
     { label: 'Less devoured than gathered', ok: savingsRate > 0 },
-    { label: "A refuge from ruin laid by", ok: bufferMonths >= 3 },
+    { label: 'A refuge from ruin — core needs met', ok: bufferMonths >= 3 },
     { label: 'No part of thy outflow left nameless', ok: uncatFraction < 0.05 },
   ];
   return { score, savingsRate, bufferMonths, uncatFraction, signals };

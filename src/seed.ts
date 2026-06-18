@@ -3,15 +3,16 @@
 import type { Category, Rule } from './types.js';
 
 export const DEFAULT_CATEGORIES: Category[] = [
+  // `core: false` marks discretionary sigils (excluded from the core forecast).
   { id: 'income',    name: 'Tithes',         kind: 'income',   color: '#5fae84' },
-  { id: 'groceries', name: 'Provisions',     kind: 'expense',  color: '#4f79ad' },
-  { id: 'dining',    name: 'Feasting',       kind: 'expense',  color: '#c9a23f' },
-  { id: 'transport', name: 'Passage',        kind: 'expense',  color: '#8f6fb5' },
-  { id: 'utilities', name: 'Hearth & Light', kind: 'expense',  color: '#3f968f' },
-  { id: 'rent',      name: 'Shelter',        kind: 'expense',  color: '#b0403a' },
-  { id: 'health',    name: 'Flesh & Bone',   kind: 'expense',  color: '#c06a8e' },
-  { id: 'shopping',  name: 'Trinkets',       kind: 'expense',  color: '#c47a3f' },
-  { id: 'fun',       name: 'Revels',         kind: 'expense',  color: '#3fa0a0' },
+  { id: 'groceries', name: 'Provisions',     kind: 'expense',  color: '#4f79ad', core: true },
+  { id: 'dining',    name: 'Feasting',       kind: 'expense',  color: '#c9a23f', core: false },
+  { id: 'transport', name: 'Passage',        kind: 'expense',  color: '#8f6fb5', core: true },
+  { id: 'utilities', name: 'Hearth & Light', kind: 'expense',  color: '#3f968f', core: true },
+  { id: 'rent',      name: 'Shelter',        kind: 'expense',  color: '#b0403a', core: true },
+  { id: 'health',    name: 'Flesh & Bone',   kind: 'expense',  color: '#c06a8e', core: true },
+  { id: 'shopping',  name: 'Trinkets',       kind: 'expense',  color: '#c47a3f', core: false },
+  { id: 'fun',       name: 'Revels',         kind: 'expense',  color: '#3fa0a0', core: false },
   { id: 'savings',   name: 'The Hoard',      kind: 'transfer', color: '#5a5bb0' },
 ];
 

@@ -16,4 +16,5 @@ export * from './forecast.js';
 export * from './cashflow.js';
 export * from './scenario.js';
 export * from './wellbeing.js';
+export * from './ai.js';
 export * from './seed.js';

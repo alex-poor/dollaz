@@ -41,6 +41,7 @@
     { id: 'merchants', label: 'The Bazaar', icon: 'coins' },
     { id: 'analysis', label: 'Auguries', icon: 'analysis' },
     { id: 'categories', label: 'Sigils', icon: 'tag' },
+    { id: 'oracle', label: 'The Oracle', icon: 'eye' },
   ];
 
   function Sidebar({ route, go, t, uncat, version, update, onUpdate, onCheck, checking }) {
@@ -95,10 +96,28 @@
     const tw = state.settings.tweaks;
     const setTweak = (patch) => setState(s => ({ ...s, settings: { ...s.settings, tweaks: { ...s.settings.tweaks, ...patch } } }));
     const setCurrency = (v) => setState(s => ({ ...s, settings: { ...s.settings, currency: v } }));
+    const setModel = (m) => setState(s => ({ ...s, settings: { ...s.settings, ai: { ...s.settings.ai, model: m } } }));
     const [confirmReset, setConfirmReset] = useState(false);
+    const [aiKeySet, setAiKeySet] = useState(!!(window.dzAI && window.dzAI.hasKey()));
     return (
       <div className="grid" style={{ gap: 'var(--s6)' }}>
         <div className="field"><label>Sigil of coin</label><input className="input" value={state.settings.currency} maxLength={3} style={{ maxWidth: 100 }} onChange={e => setCurrency(e.target.value)} /><span className="hint">Figures graven in monospace, tabular</span></div>
+        <hr className="divider" />
+        <div>
+          <div className="nav-section" style={{ padding: '0 0 var(--s2)' }}>The Oracle</div>
+          <div className="field"><label>Its mind (model)</label>
+            <select className="input" value={(state.settings.ai && state.settings.ai.model) || 'claude-opus-4-8'} onChange={e => setModel(e.target.value)}>
+              <option value="claude-opus-4-8">Claude Opus 4.8 — keenest</option>
+              <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — balanced</option>
+              <option value="claude-haiku-4-5">Claude Haiku 4.5 — swift &amp; frugal</option>
+            </select>
+            <span className="hint">Thou payest Anthropic by the token — Haiku is the most frugal.</span>
+          </div>
+          {aiKeySet
+            ? <div className="row" style={{ justifyContent: 'space-between', marginTop: 'var(--s2)' }}><span className="row" style={{ gap: 8, color: 'var(--text-muted)' }}><Icon name="check" size={15} style={{ color: 'var(--pos)' }} />A key is bound</span><button className="btn ghost sm" onClick={() => { window.dzAI.setKey(''); setAiKeySet(false); pushToast('The key is unbound'); }}>Forget the key</button></div>
+            : <window.OracleKeyForm compact onSaved={() => { setAiKeySet(true); pushToast('The Oracle wakes'); }} />}
+          <div className="hint" style={{ marginTop: 8 }}>Forge a key at console.anthropic.com — a Claude.ai subscription cannot serve. To answer, thy ledger (sums, and individual inscriptions when needed) is sent to Anthropic.</div>
+        </div>
         <hr className="divider" />
         <div>
           <div className="nav-section" style={{ padding: '0 0 var(--s2)' }}>Gilding</div>

@@ -40,9 +40,15 @@
     const transferCount = txns.reduce((n, t) => n + (t.transfer ? 1 : 0), 0);
 
     const mtByYm = Object.fromEntries(DZ.monthlyTotals(flow).map(m => [m.month, m]));
+    // Core vs discretionary expense per month (discretionary sigils have core===false).
+    const es = DZ.expenseSplit(flow, cats);
+    const splitByYm = {};
+    es.months.forEach((m, i) => { splitByYm[m] = { core: es.core[i], disc: es.discretionary[i] }; });
+    const hasDiscretionary = cats.some(c => c.core === false);
     const MONTHS = YMS.map(ym => {
       const m = mtByYm[ym] || { income: 0, expense: 0, net: 0 };
-      return { ym, income: m.income, expenses: m.expense, net: m.net };
+      const sp = splitByYm[ym] || { core: 0, disc: 0 };
+      return { ym, income: m.income, expenses: m.expense, net: m.net, coreExpense: sp.core, discExpense: sp.disc };
     });
 
     const acctTotal = state.accounts.reduce((s, a) => s + (a.balance || 0), 0);
@@ -95,7 +101,7 @@
     const uncatTotal = uncatSpend ? uncatSpend.amount
       : flow.reduce((s, t) => s + (t.amount < 0 && !t.categoryId ? -t.amount : 0), 0);
 
-    const wb = DZ.wellbeing(flow, liquid || acctTotal || 0);
+    const wb = DZ.wellbeing(flow, liquid || acctTotal || 0, cats);
 
     // Imported account labels that have no matching vault yet (for auto-derive).
     const vaultIds = new Set(state.accounts.map(a => a.id));
@@ -112,7 +118,7 @@
       YMS, MONTHS12: MONTHS, NETWORTH, CATSPEND, catSeries, catSeriesIncome,
       TXNS: txns, RULES, catCounts,
       uncatCount, uncatTotal, thisMonth, prevMonth, avgSpend, ytdSurplus, savingsRate,
-      transferCount, transferSuggested, unlinkedAccountIds,
+      transferCount, transferSuggested, unlinkedAccountIds, hasDiscretionary,
       wb, hasData: txns.length > 0,
     });
   }
