@@ -1,3 +1,26 @@
+# Dollaz 0.5.0 — "The Oracle"
+
+- **The Oracle** — a new screen where thou mayst *ask* of thy coin. Pose a
+  question in plain words and an intelligence reads thy ledger to answer —
+  "how fares my coin?", "where does most of it go?", "what was that large charge
+  in May?". It reckons from thy own figures (overview, sigil and merchant
+  tallies, trends, the prophecy) and can look upon individual inscriptions when a
+  question demands. **Requires an Anthropic API key** — forge one at
+  console.anthropic.com (a Claude.ai subscription cannot serve). The key is bound
+  to this device; to answer, thy ledger is sent to Anthropic.
+- **Core vs discretionary spending.** Each sigil may now be marked *baseline*
+  (rent, provisions, utilities) or *discretionary* (one-offs — landscaping, a new
+  couch). The **Prophecy now foretells income against CORE spend by default**, so a
+  lumpy one-off no longer drags it into a false deficit — toggle **Baseline / All**
+  to compare. The Crossroads still lets thee temper all spending.
+- **A truer Augury.** Thy standing now reckons the emergency buffer and savings
+  rate on core needs, so a single extraordinary outlay no longer sinks the score.
+- **The Crossroads, deepened.** Each sigil expands to its top merchants — each
+  with its own slider and "forsake" — shows every sigil, and apportions by a
+  consistent recent window.
+
+---
+
 # Dollaz 0.4.1
 
 - **The Crossroads** (Auguries) — a "what-if" panel under the Prophecy. When a
