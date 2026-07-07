@@ -85,6 +85,23 @@ describe('parseOfx', () => {
     expect(res.fresh.length).toBe(0);
     expect(res.duplicates).toBe(2);
   });
+  it('reconciles a FITID re-import even when the bank omits ACCTID', () => {
+    // Same statement, but this export dropped <BANKACCTFROM>/<ACCTID> entirely.
+    const withAcct = parseOfx(OFX_SGML, 'imp1').transactions;
+    const noAcct = OFX_SGML.replace(/<BANKACCTFROM>[\s\S]*?<\/BANKACCTFROM>/, '');
+    const reimport = parseOfx(noAcct, 'imp2').transactions;
+    expect(reimport.every(t => !t.account)).toBe(true);   // account-less rows
+    const res = dedupe(withAcct, reimport);
+    expect(res.fresh.length).toBe(0);
+    expect(res.duplicates).toBe(2);                        // still cast out as twins
+  });
+  it('does not merge two distinct accounts that happen to share a FITID', () => {
+    const a = parseOfx(OFX_SGML, 'imp1').transactions;     // ACCTID 12345678
+    const b = parseOfx(OFX_SGML.replace('<ACCTID>12345678', '<ACCTID>99999999'), 'imp2').transactions;
+    const res = dedupe(a, b);
+    expect(res.duplicates).toBe(0);
+    expect(res.fresh.length).toBe(2);
+  });
 });
 
 describe('parseQif', () => {

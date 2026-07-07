@@ -1,3 +1,17 @@
+# Dollaz 0.5.1
+
+- **Re-imports from banks that omit the account no longer double up.** Some banks
+  export OFX/QFX statements without naming the account (no ACCTID). Those rows
+  arrived vault-less, and because a transaction's identity was bound to its vault,
+  they slipped past the twin-casting — duplicating every overlapping inscription
+  on the next summoning. A transaction's unique bank-mark (FITID) now stands on
+  its own, so such statements reconcile cleanly whether or not they name a vault.
+- **Bind a vault-less scroll on import.** When an OFX/QFX names no vault, The
+  Summoning now offers to bind its inscriptions to one of thine own — pre-chosen
+  from the account named in the scroll's own title.
+
+---
+
 # Dollaz 0.5.0 — "The Oracle"
 
 - **The Oracle** — a new screen where thou mayst *ask* of thy coin. Pose a

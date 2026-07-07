@@ -61,10 +61,15 @@
     const [assign, setAssign] = useState({});
     const [patterns, setPatterns] = useState({});
     const [ofxAccounts, setOfxAccounts] = useState([]);
+    const [bindVault, setBindVault] = useState(''); // vault id for account-less (OFX/QIF) rows
 
     const handleText = (text, name) => {
       const fmt = DZ.detectFormat(name, text);
       setFormat(fmt); setFileName(name); setRawText(text); setMatched(null); setRememberName('');
+      // Pre-bind to a vault whose id appears in the filename (banks often name the
+      // file after the account even when the OFX body omits its ACCTID).
+      const hit = fmt !== 'csv' ? state.accounts.find(a => a.id && name.includes(a.id)) : null;
+      setBindVault(hit ? hit.id : '');
       if (fmt === 'csv') {
         const prep = DZ.prepareCsv(text);
         if (!prep.headers.length) { toast('No inscriptions could be read from that scroll'); return; }
@@ -78,19 +83,24 @@
     const onFile = (file) => { if (!file) return; const r = new FileReader(); r.onload = () => handleText(String(r.result || ''), file.name); r.readAsText(file); };
 
     const buildAll = () => format === 'ofx' ? DZ.parseOfx(rawText, importId) : format === 'qif' ? DZ.parseQif(rawText, importId, qifDateFormat) : DZ.buildTransactions(prepared, mapping, importId);
+    // Stamp the chosen vault onto rows the scroll left account-less (blank).
+    const applyBind = (b) => bindVault ? { ...b, transactions: b.transactions.map(t => (t.account && String(t.account).trim()) ? t : { ...t, account: bindVault }) } : b;
+    const buildBound = () => applyBind(buildAll());
     const mappingValid = format !== 'csv' || (mapping && mapping.date && mapping.description && (mapping.amount || mapping.debit || mapping.credit));
+    // Does the scroll leave any row without a vault? (offer to bind them)
+    const accountless = useMemo(() => step === 1 && format !== 'csv' && buildAll().transactions.some(t => !(t.account && String(t.account).trim())), [step, format, rawText, qifDateFormat]);
 
     // Live dedup-merge preview for the Scry step.
     const merge = useMemo(() => {
       if (step !== 1) return { newN: 0, twins: 0, sigils: 0, total: 0 };
-      const built = buildAll();
+      const built = buildBound();
       const ded = DZ.dedupe(state.transactions, built.transactions);
       const cat = DZ.applyRules(ded.fresh, state.rules);
       return { newN: ded.fresh.length, twins: ded.duplicates, sigils: cat.filter(t => t.categoryId).length, total: built.transactions.length };
-    }, [step, format, rawText, qifDateFormat, prepared, mapping]);
+    }, [step, format, rawText, qifDateFormat, prepared, mapping, bindVault]);
 
     const toName = () => {
-      const built = buildAll();
+      const built = buildBound();
       const ded = DZ.dedupe(state.transactions, built.transactions);
       const cat = DZ.applyRules(ded.fresh, state.rules);
       const grps = DZ.groupUnmapped(cat);
@@ -117,7 +127,7 @@
       setStep(3);
     };
 
-    const preview = useMemo(() => { if (step !== 1) return []; const b = buildAll(); return b.transactions.slice(0, 6); }, [step, format, rawText, qifDateFormat, prepared, mapping]);
+    const preview = useMemo(() => { if (step !== 1) return []; const b = buildBound(); return b.transactions.slice(0, 6); }, [step, format, rawText, qifDateFormat, prepared, mapping, bindVault]);
     const expenseCats = state.categories.filter(c => c.kind !== 'income');
 
     return (
@@ -163,6 +173,15 @@
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
                 {format === 'ofx' ? 'The OFX scroll names its own fields — date, sum, payee, and a unique mark for casting out twins. Naught to bind.' : 'The QIF scroll names its fields. Should the days read amiss below, choose their reckoning.'}
                 {format === 'qif' && <div className="field" style={{ maxWidth: 240, marginTop: 'var(--s4)' }}><label>Reckoning of days</label><select className="input" value={qifDateFormat} onChange={e => setQifDateFormat(e.target.value)}><option value="auto">Divine it</option><option value="DMY">Day / Month / Year</option><option value="MDY">Month / Day / Year</option><option value="YMD">Year / Month / Day</option></select></div>}
+                {accountless && state.accounts.length > 0 && (
+                  <div className="field" style={{ maxWidth: 320, marginTop: 'var(--s4)' }}>
+                    <label>This scroll names no vault — bind its rows to</label>
+                    <select className="input" value={bindVault} onChange={e => setBindVault(e.target.value)}>
+                      <option value="">— leave unbound —</option>
+                      {state.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
 
