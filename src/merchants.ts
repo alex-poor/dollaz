@@ -25,10 +25,16 @@ export function merchantSummary(txns: Transaction[], rules: Rule[], months?: str
     if (t.transfer || t.amount >= 0) continue;
     const rule = matchRule(t.raw || t.description, rules);
     const key = rule ? rule.pattern.toUpperCase() : suggestMerchant(t.raw || t.description);
+    // The sigil is the transaction's own category — which reflects a matched
+    // rule (after applyRules) but also honours a sigil set by hand in the Ledger
+    // on a row no rule covers. Fall back to the rule's category if unset.
+    const catId = t.categoryId ?? (rule ? rule.categoryId : null);
     let row = map.get(key);
     if (!row) {
-      row = { key, label: key, categoryId: rule ? rule.categoryId : null, mapped: !!rule, total: 0, count: 0, last: '', series: months ? months.map(() => 0) : [] };
+      row = { key, label: key, categoryId: catId, mapped: !!rule, total: 0, count: 0, last: '', series: months ? months.map(() => 0) : [] };
       map.set(key, row);
+    } else if (catId && !row.categoryId) {
+      row.categoryId = catId;   // adopt a sigil from a later row if the first was uncategorised
     }
     row.total += -t.amount;
     row.count++;

@@ -34,6 +34,14 @@ describe('merchantSummary', () => {
     const mecca = rows.find(r => r.key.includes('MECCA'));
     expect(mecca && mecca.mapped).toBe(false);
   });
+  it('honours a hand-set sigil on a row no rule covers', () => {
+    const withManual = [...txns, tx('7', '2026-06-20', -420, 'IMAGINE LANDSCAPE DESIGN', 'mending')];
+    const rows = merchantSummary(withManual, rules);
+    const r = rows.find(x => x.key.includes('IMAGINE'));
+    expect(r).toBeTruthy();
+    expect(r!.categoryId).toBe('mending');   // shows its sigil in the Bazaar, not "Unnamed"
+    expect(r!.mapped).toBe(false);           // ...even though no rule matched
+  });
   it('produces a monthly series when months are given', () => {
     const rows = merchantSummary(txns, rules, ['2026-05', '2026-06']);
     const cd = rows.find(r => r.key === 'COUNTDOWN')!;

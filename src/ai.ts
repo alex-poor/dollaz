@@ -201,7 +201,7 @@ export function runAiTool(name: string, input: Record<string, unknown> | null | 
       }
       return {
         currency: ctx.currency,
-        merchants: rows.slice(0, top).map(r => ({ merchant: r.label, total: round(r.total), count: r.count, lastSeen: r.last, categorised: r.mapped })),
+        merchants: rows.slice(0, top).map(r => ({ merchant: r.label, total: round(r.total), count: r.count, lastSeen: r.last, categorised: !!r.categoryId })),
       };
     }
 

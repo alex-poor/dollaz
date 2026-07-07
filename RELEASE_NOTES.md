@@ -1,3 +1,13 @@
+# Dollaz 0.5.2
+
+- **The Bazaar now honours hand-set sigils.** A sigil bestowed directly on a row
+  in The Ledger — with no matching rule behind it — was ignored by The Bazaar,
+  which reckoned each merchant's sigil from thy rules alone and cast the rest into
+  "Unnamed." The Bazaar (and the Oracle's merchant-reckoning) now read each
+  inscription's own sigil, rule-born or hand-set alike.
+
+---
+
 # Dollaz 0.5.1
 
 - **Re-imports from banks that omit the account no longer double up.** Some banks
